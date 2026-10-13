@@ -87,7 +87,9 @@ then an optional override `/sdcard/Android/data/com.TrassGames.Yeeps/files/blaze
 Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discord`.
 
 - `server` -> backend base (`KitServer()`), feed and video URLs.
-- Photon ids: `hook_PN_GetSettings` replaces `PhotonServerSettings.AppSettings`
+- Photon ids: `hook_LBC_Connect` writes them into the AppSettings every Photon
+  connection (PUN and Voice) passes to `LoadBalancingClient.ConnectUsingSettings`;
+  `hook_PN_GetSettings` also replaces `PhotonServerSettings.AppSettings`
   (AppIdRealtime/AppIdVoice/FixedRegion) the first time PUN reads it; `KitPhotonTick`
   (every 2 s from `AccountOnlineManager.Update`) does the same for the Photon Voice
   `VoiceAppSettings` asset and any `VoiceConnection`. Ids are always replaced, so an

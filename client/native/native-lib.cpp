@@ -4468,6 +4468,16 @@ static void* hook_PN_GetSettings(void* mi) {
     }
     return ss;
 }
+// Second layer: every Photon connection (PUN and Voice both go through
+// LoadBalancingClient.ConnectUsingSettings(AppSettings)) gets the host's ids
+// written into the settings it is about to use, right before connecting. The
+// client picks AppIdRealtime or AppIdVoice by its own type, so both are set.
+static bool (*orig_LBC_Connect)(void*, void*, void*) = nullptr;
+static bool hook_LBC_Connect(void* self, void* appSettings, void* mi) {
+    try { KitApplyAppSettings((Il2CppObject*)appSettings, "LoadBalancingClient.ConnectUsingSettings"); }
+    catch (...) { BNM_FileCheckpoint("Kit: Photon ids EXCEPTION (connect)"); }
+    return orig_LBC_Connect ? orig_LBC_Connect(self, appSettings, mi) : false;
+}
 static std::set<void*> g_kitVoiceDone;
 static double g_kitVoiceNext = 0;
 static void KitPhotonTick() {
@@ -4501,6 +4511,10 @@ static void InstallKitPhoton() {
         MethodBase g = pn.IsValid() ? pn.GetMethod("get_PhotonServerSettings", 0) : MethodBase();
         if (g.IsValid()) { BasicHook(g, hook_PN_GetSettings, orig_PN_GetSettings); BNM_FileCheckpoint("Kit: PhotonServerSettings getter hooked"); }
         else BNM_FileCheckpoint("Kit: PhotonNetwork.get_PhotonServerSettings NOT FOUND");
+        Class lbc("Photon.Realtime", "LoadBalancingClient");
+        MethodBase c = lbc.IsValid() ? FindOverload(lbc, "ConnectUsingSettings", {"Photon.Realtime.AppSettings"}) : MethodBase();
+        if (c.IsValid()) { BasicHook(c, hook_LBC_Connect, orig_LBC_Connect); BNM_FileCheckpoint("Kit: LoadBalancingClient.ConnectUsingSettings hooked"); }
+        else BNM_FileCheckpoint("Kit: LoadBalancingClient.ConnectUsingSettings NOT FOUND");
     } catch (...) { BNM_FileCheckpoint("Kit: EXCEPTION installing Photon hook"); }
 }
 
