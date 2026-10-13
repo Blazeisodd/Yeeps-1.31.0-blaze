@@ -158,6 +158,17 @@ photon_voice_app_id=<Voice app id>
 
 `python tools/configure_apk.py ... --settings-only` prints this file for you.
 
+## Troubleshooting
+
+- **"address already in use" when the server starts:** another program uses port 8000.
+  Set `PORT=8001` (or any free port) in `server/.env`, and use that port in
+  `PUBLIC_BASE_URL` and in the APK's `--server`.
+- **"Install Python 3.11 or newer"** on Windows: install it from python.org with
+  "Add python.exe to PATH" ticked, then open a new window.
+- **The game can't reach the server:** check `PUBLIC_BASE_URL`, the `--server` you built
+  the APK with, and your firewall. From the headset's network,
+  `<server>/health` should answer.
+
 ## Using Claude
 
 This repo is set up for [Claude Code](https://claude.com/claude-code): open it and ask,
