@@ -9,17 +9,13 @@ Grant: add the role to the account's roleKeys (editor / Mongo), e.g. "blaze".
 """
 import os
 
-ROLE_LOCKED_PATTERNS = {"1x5x2_stuffedTextBlaze": "blaze",
-                        "3x2x1_blazeScreenRole": "blaze"}
+ROLE_LOCKED_PATTERNS = {"1x5x2_stuffedTextBlaze": "blaze"}
 # Roles hidden from the client. "blaze" is NOT hidden any more: the BLAZE blocks
 # carry MapObject.requiredRoleKey = "blaze" (APK 131b4+), and the game checks
 # that against the roleKeys it sees, so it must see the role.
 SERVER_ONLY_ROLES: set = set()
 # Custom blocks every account owns (creative build menu). Kept out of the
 # techweb list so survival players can't craft them.
-# 3x3x1_blazeScreen REMOVED 2026-10-06: a placed 3x3 Screen in a big public room
-# (official_1) crashed every client that loaded the room (SIGSEGV after the
-# screen-material swap). Not owned by anyone until the APK is fixed.
 ALWAYS_OWNED_PATTERNS: list = []
 # Never served to anyone, even if stored on an account.
 DISABLED_PATTERNS = {"3x3x1_blazeScreen",

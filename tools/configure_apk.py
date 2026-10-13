@@ -29,6 +29,8 @@ import zipfile
 
 CONFIG_ENTRY = "lib/arm64-v8a/libblazeconfig.so"
 LIB_ENTRY = "lib/arm64-v8a/libBNMExplorer.so"
+DATA_ENTRIES = {"assets/bin/Data/data.unity3d": "data.unity3d",
+                "assets/bin/Data/sharedassets1.resource": "sharedassets1.resource"}
 HERE = os.path.dirname(os.path.abspath(__file__))
 KEY_DIR = os.path.join(HERE, ".keys")
 GUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -77,6 +79,8 @@ def main() -> None:
     ap.add_argument("--discord", default="https://discord.gg/VhFmdAyXGk", help="link for the news-board Discord button")
     ap.add_argument("--out", default="", help="output APK (default: Yeeps-1.31.0-blaze-<host>.apk)")
     ap.add_argument("--keystore", default=os.path.join(KEY_DIR, "yeeps-selfhost.keystore"))
+    ap.add_argument("--data", default="", help="also put back edited game data from this folder "
+                                               "(data.unity3d / sharedassets1.resource, see tools/data/)")
     ap.add_argument("--lib", default="", help="also replace the mod library with this libBNMExplorer.so "
                                               "(built from client/native, see CLAUDE.md)")
     ap.add_argument("--settings-only", action="store_true",
@@ -107,7 +111,8 @@ def main() -> None:
             f.write(password)
 
     zipalign, apksigner = find_tool("zipalign"), find_tool("apksigner")
-    with tempfile.TemporaryDirectory() as tmp:
+    # Work next to the output (two ~380 MB files): the system temp folder can be small.
+    with tempfile.TemporaryDirectory(dir=os.path.dirname(os.path.abspath(out)) or ".") as tmp:
         raw = os.path.join(tmp, "raw.apk")
         aligned = os.path.join(tmp, "aligned.apk")
         print("writing settings into the APK (takes a minute: the APK is ~380 MB)...")
@@ -122,6 +127,9 @@ def main() -> None:
                     data = text.encode()
                 elif n == LIB_ENTRY and a.lib:
                     data = open(a.lib, "rb").read()
+                elif n in DATA_ENTRIES and a.data and os.path.exists(os.path.join(a.data, DATA_ENTRIES[n])):
+                    data = open(os.path.join(a.data, DATA_ENTRIES[n]), "rb").read()
+                    print(f"  using edited {DATA_ENTRIES[n]}")
                 else:
                     data = zin.read(item)
                 zout.writestr(item, data, compress_type=item.compress_type)

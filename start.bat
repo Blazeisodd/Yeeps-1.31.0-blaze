@@ -5,7 +5,7 @@ rem   start.bat --tunnel   also open a free Cloudflare quick tunnel in a second 
 rem First run: creates server\.venv, installs requirements, creates server\.env.
 setlocal
 cd /d "%~dp0server"
-where python >nul 2>nul || (echo Install Python 3.11+ from https://www.python.org/downloads/ and tick "Add to PATH". & pause & exit /b 1)
+python -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >nul 2>nul || (echo Install Python 3.11 or newer from https://www.python.org/downloads/ and tick "Add python.exe to PATH". The "python" that opens the Microsoft Store does not work. & pause & exit /b 1)
 if not exist .venv (
   echo Setting up Python packages ^(first run^)...
   python -m venv .venv || (pause & exit /b 1)

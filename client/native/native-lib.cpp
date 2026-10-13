@@ -3763,11 +3763,11 @@ static void ClearScreen(const std::string& slot) {
 // (official_1 / wild_0) - left alone it just renders plain.
 static const std::map<std::string, std::string> kScreenKeys = {
     {"3x2x1_blazeScreenRole", "blaze"}};
-// Static picture blocks (131b15+): slot 1 = a fixed picture material shipped
-// in the data (build_cat_block.py), loaded once by its Resources path.
-static const std::map<std::string, std::string> kPictureKeys = {
-    {"1x1_stuffedCucumberCat", "blazecat/mat_cucumbercat"}};
+// Picture blocks: slot 1 = a fixed picture material shipped in the game data
+// (tools/data/add_picture_block.py), registered at the Resources path
+// "blazepic/mat_<block key, lowercase>". Every block key is looked up once.
 static std::map<std::string, void*> g_pictureMats;     // path -> pinned material
+static std::map<std::string, std::string> g_pictureKeyPath;   // block key -> path ("" = not a picture block)
 static Il2CppObject* PictureMaterial(const std::string& path) {
     auto f = g_pictureMats.find(path);
     if (f != g_pictureMats.end() && p_gchandle_target) {
@@ -3781,6 +3781,16 @@ static Il2CppObject* PictureMaterial(const std::string& path) {
     if (m) g_pictureMats[path] = Pin(m);
     return m;
 }
+static std::string PicturePathFor(const std::string& key) {
+    auto it = g_pictureKeyPath.find(key);
+    if (it != g_pictureKeyPath.end()) return it->second;
+    std::string lower = key;
+    for (auto& ch : lower) ch = (char)tolower((unsigned char)ch);
+    std::string path = "blazepic/mat_" + lower;
+    std::string found = PictureMaterial(path) ? path : std::string();
+    g_pictureKeyPath[key] = found;
+    return found;
+}
 static void (*orig_MO_SetSharedMaterials)(void*, void*, void*) = nullptr;
 static void hook_MO_SetSharedMaterials(void* self, void* arr, void* mi) {
     void* pass = arr;
@@ -3793,10 +3803,10 @@ static void hook_MO_SetSharedMaterials(void* self, void* arr, void* mi) {
                 if (go) key = MonoStr(Method<Il2CppObject*>(Class("UnityEngine", "Object").GetMethod("get_name", 0))[go]());
                 size_t c = key.find("(Clone)"); if (c != std::string::npos) key = key.substr(0, c);
             }
-            auto pk = kPictureKeys.find(key);
-            if (pk != kPictureKeys.end()) {
+            std::string picPath = key.empty() ? std::string() : PicturePathFor(key);
+            if (!picPath.empty()) {
                 uintptr_t n = *(uintptr_t*)((uint8_t*)arr + 0x18);     // Il2CppArray max_length
-                Il2CppObject* m = PictureMaterial(pk->second);
+                Il2CppObject* m = PictureMaterial(picPath);
                 if (n >= 2 && m) {
                     void* copy = p_array_new(Class("UnityEngine", "Material").GetClass(), n);
                     if (copy) {

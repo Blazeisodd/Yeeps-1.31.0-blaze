@@ -129,7 +129,6 @@ ALL_TECHWEB_ITEMS = [
     '1x1_straight_pipeFat',
     '1x1_straight_wire',
     '1x1_stuffed',
-    '1x1_stuffedCucumberCat',      # 131b15: picture cube, 10000 cotton
     '1x1_stuffingStorage',
     '1x1_textSign',
     '1x1_trappedWood',

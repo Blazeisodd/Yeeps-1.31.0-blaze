@@ -145,6 +145,14 @@ async def _map_doc(map_key) -> dict:
             found = await collection.find_one({"mapKey": f"{room_key}$current"}, {"_id": 0})
     if _is_119_map(found):
         out = {**found, "mapKey": map_key, "roomKey": room_key}
+        # Editor-imported maps (imported_maps) carry editor fields and lack the
+        # two the client always asks for: drop the extras, fill the missing ones
+        # (a requested field coming back missing crashes the 1.31 client).
+        for _k in ("blocks", "blockCount", "importedAt", "dimensions", "editorBlocks"):
+            out.pop(_k, None)
+        if str(out.get("saveData") or "").startswith("U1BBTQ"):
+            out.setdefault("mapDataVersion", 3)
+            out.setdefault("saveInternalStates", EMPTY_SPAM_STATES)
         # 1.31: a map can carry its FULL sign/dispenser internal states in
         # saveInternalStatesFull (Starter House). Those crash APKs older than
         # build_gate.GUARD_MIN_BUILD, so serve them only when every build that can
@@ -158,12 +166,16 @@ async def _map_doc(map_key) -> dict:
             except Exception as e:
                 print(f"[dynamo] full-states gate failed for {map_key}: {e}")
         return out
+    # No map stored: an empty map in the format the 1.31 client saves itself
+    # (SPAM, mapDataVersion 3). The old 1.19 BinaryFormatter empty map fails in
+    # 1.31 with "INVALID_FORMAT", and the kit ships every room without a map.
+    from services.mapsync_serializer import serialize_blocks_spam
     return {
         "mapKey": map_key,
         "roomKey": room_key,
-        "saveData": EMPTY_MAP_SAVE_DATA,
-        "saveInternalStates": EMPTY_MAP_SAVE_DATA,
-        "mapDataVersion": 1,
+        "saveData": serialize_blocks_spam([]),
+        "saveInternalStates": EMPTY_SPAM_STATES,
+        "mapDataVersion": 3,
     }
 
 

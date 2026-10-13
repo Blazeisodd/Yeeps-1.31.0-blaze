@@ -4,7 +4,7 @@
     python tools/smoke_test.py http://127.0.0.1:8000 --editor-password YOURPASS
 
 Logs in a throwaway test account (o_1000000000000001, "KitTester"), reads its
-account, the news board, the world map, Starter House and its map, checks that
+account, the news board, the world map, Starter House and its (empty) map, checks that
 community worlds are refused, that a Photon join would be allowed, the client
 feed, and the editor sign-in. Every line says PASS or FAIL. The test account
 stays in the database; delete it in the editor's Players tab if you like.
@@ -100,7 +100,8 @@ sid = it.get("lastEditedSessionID", {}).get("N", "1")
 s, j = dyn("GetItem", {"TableName": "G2_Maps", "Key": {"mapKey": {"S": f"official_1$map_{sid}_save0"}},
                        "ProjectionExpression": "mapDataVersion, saveData, saveInternalStates"})
 sd = j.get("Item", {}).get("saveData", {}).get("S", "")
-check("Starter House map", sd.startswith("U1BBTQ") and len(sd) > 10000, f"{len(sd)} chars")
+# The kit ships with no map builds, so a fresh server answers with an empty map.
+check("Starter House map answers", sd.startswith("U1BBTQ"), f"{len(sd)} chars (empty until you add a map)")
 
 s, d = lam("g2_cwGetCanEnter", {"accountID": ACC, "worldName": "FREEBLOCKS"})
 check("community worlds refused", d.get("canEnter") == 0, str(d)[:100])

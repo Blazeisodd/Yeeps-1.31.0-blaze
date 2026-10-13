@@ -13,6 +13,7 @@ from services.db import accounts, rooms, debug_logs, globals_col, db as _db
 from config import YEEPS_PROXY_URL, EDITOR_PW_WEBHOOK, EDITOR_PW_ROTATE_SECONDS
 
 import os
+import sys
 import re
 import hmac
 from datetime import datetime, timedelta, timezone
@@ -822,8 +823,10 @@ async def get_map(room_key: str):
     doc = await imported_maps.find_one({"roomKey": room_key}, {"_id": 0, "saveData": 0})
     if doc:
         blocks = doc.get("blocks") or []
-        doc["blocks"] = blocks[:500]
-        doc["blocksTruncated"] = len(blocks) > 500
+        # The full list: the page saves back what it was given, so a cut list
+        # deleted every block past the cut (2026-10-12: BAM 5 Winner 5342 -> 2000).
+        doc["blocks"] = blocks
+        doc["blocksTruncated"] = False
         doc["source"] = "imported"
         return JSONResponse(content=doc)
     m = await maps_col.find_one({"mapKey": f"{room_key}$current"}, {"_id": 0})
@@ -848,8 +851,10 @@ async def get_map(room_key: str):
     m["saveDataBytes"] = len(sd)
     m["internalStatesBytes"] = len(isd)
     m["blockCount"] = len(blocks)
-    m["blocks"] = blocks[:2000]
-    m["blocksTruncated"] = len(blocks) > 2000
+    # The full list: the page saves back what it was given, so a cut list
+    # deleted every block past the cut (2026-10-12: BAM 5 Winner 5342 -> 2000).
+    m["blocks"] = blocks
+    m["blocksTruncated"] = False
     return JSONResponse(content=m)
 
 
@@ -1739,8 +1744,8 @@ async def debug_mem(reset: int = 0, top: int = 25, collect: int = 0, trim: int =
         freed = gc.collect()
         out["gc_collect"] = {"objects_before": before, "unreachable_freed": freed,
                              "objects_after": len(gc.get_objects()), "garbage": len(gc.garbage)}
-    if trim:
-        # give freed-but-held C heap memory back to the OS (glibc)
+    if trim and sys.platform.startswith("linux"):
+        # give freed-but-held C heap memory back to the OS (glibc; Linux only)
         import ctypes
         def rss():
             for line in open("/proc/self/status"):

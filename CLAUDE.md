@@ -15,10 +15,34 @@ Three parts:
 |---|---|---|
 | `server/` | The game backend + web editor (`/editor`) | Python (FastAPI, Motor/MongoDB) |
 | `client/native/` | The mod library injected into the game (`libBNMExplorer.so`) | C++ (BNM + Dobby, Android NDK) |
-| `tools/` | `configure_apk.py` (make a host's APK), `smoke_test.py` (check a server) | Python |
+| `tools/` | `configure_apk.py` (make a host's APK), `smoke_test.py` (check a server), `data/` (custom blocks and music) | Python |
 
-The APK itself is not in git (it's ~380 MB): it's the GitHub release asset
+The APK itself is not in git (~340 MB): it's the GitHub release asset
 `Yeeps-1.31.0-blaze-kit1.apk`, a template with no server or Photon app set.
+
+**What's in the APK:** the ORIGINAL Yeeps 1.31.0 game data plus exactly one added
+block, the BLAZE block (`1x5x2_stuffedTextBlaze`, a cotton "BLAZE" word, role-locked to
+`blaze`), with the Photon app ids blanked; the original audio file; the mod library;
+`versionName` 1.31.0-blaze; plain HTTP allowed. Nothing else was added (no extra
+blocks, disks, fonts or screens). Hosts add their own content with `tools/data/`.
+
+## If the user asks for maps
+
+The kit ships with NO map builds: the 20 world rooms exist but are empty. When the
+user wants maps (official maps, a real Yeeps room, "put a map in Starter House", ...):
+
+1. Point them to the author's **YeepsMapLoader**: https://github.com/Blazeisodd/YeepsMapLoader
+   (a Unity Editor tool, Unity 6000.1.17f1 + an AssetRipper export of Yeeps; its README
+   has the setup steps and a list of real room keys). It fetches a real Yeeps room's blocks
+   with the player's own Meta username + 4-digit mobile code, through the author's relay
+   (`/rooms`, `/map`). Don't rebuild that tool here; use it as-is.
+2. The relay's `/map` reply is `{ok, roomKey, dimensions, blocks:[{name,x,y,z,fwd,up,color,owner,...}]}`.
+   That exact JSON (or just the blocks array) imports into one of the host's rooms with the
+   editor's **Maps** tab (API: `POST /editor/api/map/import`, `routers/editor_router.py`).
+   Import keeps only block keys listed in the `valid_mapobject_keys` global, so 2.x-only
+   blocks from live Yeeps are dropped instead of breaking the room.
+3. Or build in game: `UNLOCK_ALL_MODES=1` in `server/.env` (restart) lets anyone switch
+   rooms to creative and save official rooms; turn it off afterwards.
 
 ## Typical tasks
 
@@ -52,8 +76,45 @@ its password is in the `.pass` file next to it). Both are gitignored: never comm
        ninja -C build/native
 
 3. Put it in the APK: `tools/configure_apk.py ... --lib build/native/libBNMExplorer.so`.
+   (Only needed for C++ changes; settings, blocks and music never need a rebuild.)
 4. If you change `kBuildId`, the server's build gate only matters when
    `ENFORCE_CLIENT_BUILD=1` (off by default).
+
+**Custom blocks (prefabs) and music (disks)**: see "Adding content" below.
+
+## Adding content
+
+All game-data edits work on two files copied out of the APK, then put back:
+
+    python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data     # data/data.unity3d + data/sharedassets1.resource
+    ... edit with the tools below ...
+    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk ... --data data
+
+- **Picture block** (`tools/data/add_picture_block.py`): a 1x1x1 cotton cube with a
+  picture on every face, listed next to the 1x1 Pillow. `--key 1x1_stuffed<Name>`
+  (must start with `1x1_`), `--name`, `--image`, `--cost`. It clones the YEEP word block's
+  prefab (GameObject/Transform/MapObject/MeshFilter/MeshRenderer/BoxCollider), adds a
+  Texture2D + textured material, registers the prefab under
+  `mapobjects/complexdecorationstuffed/<key lowercase>` and the material under
+  `blazepic/mat_<key lowercase>` in the ResourceManager, and appends a pattern entry.
+  The mod keeps material slot 1 on `blazepic/mat_<key>` for any block key
+  (`PicturePathFor` in native-lib.cpp): the game repaints every slot with the palette
+  color otherwise. Players must own the key: add it to `ownedPatterns` (editor, Default
+  player data and/or each player) and to the `valid_mapobject_keys` global if maps that
+  use it get imported. Run it once per block; it refuses an existing key.
+- **Music in the APK** (`tools/data/bake_disk.py`): `--list` prints record AudioClips
+  and label textures; `--clip <AudioClip> --audio <file> [--art <recordArtTexture_x>
+  --label <image>]` converts the audio (ffmpeg via imageio-ffmpeg) to mono PCM16 FSB5,
+  appends it to `sharedassets1.resource` and repoints the AudioClip.
+- **Music without a new APK** (simpler, usually what the user wants): the editor's
+  **Disks** tab uploads audio for a record; the server lists it in `/client/feed.txt`
+  (`D` lines) and the mod swaps that record's clip on every headset.
+- **Other kinds of blocks** (new shapes, wiring, etc.) need real Unity asset work:
+  use `add_picture_block.py` as the template (it shows the MapObject raw layout:
+  GO pptr, enabled, script pptr, name, size 3i, ..., sounds, ints) and test on a headset.
+
+Tool requirements: `pip install UnityPy Pillow imageio-ffmpeg` (the server's
+requirements already include Pillow and imageio-ffmpeg).
 
 ## How the game talks to the server
 
@@ -116,10 +177,12 @@ MongoDB database `DB_NAME` (default `Yeeps131`). Main collections: `accounts`,
 `bundles`, `player_statuses`, plus logs (`editor_logins`, `client_error_*`, `debug_logs`,
 `map_history` for reverts).
 
-`server/seed/world/*.json` is the 1.31.0-blaze world (20 rooms on the `beta4` map,
-their maps, globals incl. the default player data `default_account_override` and the
-news board `announcementData`). `seed/load_world.py` inserts what's missing at startup
-and never overwrites. To reset a room: delete its `rooms`/`maps` documents and restart.
+`server/seed/world/*.json` is the 1.31 world layout: the `beta4` room map (22 nodes),
+20 room documents, globals (default player data `default_account_override` with ~1970
+owned items, `valid_mapobject_keys`, the news board `announcementData`, ...) and one
+bundle. **No map builds** (no `maps` documents): rooms serve an empty map until one is
+imported or built. `seed/load_world.py` inserts what's missing at startup and never
+overwrites. To reset a room's settings: delete its `rooms` document and restart.
 
 ## Things that break the 1.31 client (learned the hard way)
 
@@ -140,9 +203,11 @@ and never overwrites. To reset a room: delete its `rooms`/`maps` documents and r
 - Maps are SPAM format (`U1BBTQ...`, mapDataVersion 3). `saveInternalStates` =
   `"SPAM"`, u8 3, i32 count, then per entry i32 x,y,z + a .NET string (signs etc.);
   empty = `U1BBTQMAAAAA`. Decoder/encoder: `services/mapsync_decoder.py` / `mapsync_serializer.py`.
-- Official rooms are editor-only (in-game saves are refused) and a save that shrinks a
-  big map by >85% is refused (anti-wipe), except a player clearing their own private
-  world from their own headset.
+- Official rooms are editor-only (in-game saves are refused unless `UNLOCK_ALL_MODES=1`)
+  and a save that shrinks a big map by >85% is refused (anti-wipe), except a player
+  clearing their own private world from their own headset.
+- The editor must always get and send a room's FULL block list: a capped list once
+  deleted every block past the cap when saved (`get_map` returns all blocks now).
 
 ## Checking a headset
 
@@ -158,6 +223,16 @@ Community worlds (`c_<name>` find nothing; `g2_cwGetCanEnter` says they're off),
 popular/featured world lists (empty), live player lookups from the real Yeeps API,
 the Discord bot / account linking, and the Photon bot. The server must never contact
 the real Yeeps backend.
+
+## Windows hosts
+
+Most hosts are on Windows. `start.bat` needs a real Python (python.org, "Add to PATH";
+the Microsoft Store stub fails the version check). `configure_apk.py` finds
+`apksigner.bat` / `zipalign.exe` on PATH or under `%ANDROID_HOME%\build-tools\<ver>\`
+and `keytool.exe` from the JDK on PATH. It writes its two ~340 MB temp files next to the
+output APK. The Windows firewall asks to allow Python the first time the server listens:
+"Private networks" is enough for same-Wi-Fi play. Use `python` (not `python3`) in
+commands. Paths with spaces need quotes.
 
 ## Conventions
 

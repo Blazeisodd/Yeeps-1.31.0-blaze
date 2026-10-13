@@ -2,49 +2,56 @@
 
 Run your own Yeeps 1.31.0-blaze server on your own PC, with your own Photon apps.
 Your players install an APK made for your server. Nothing here talks to anyone
-else's server.
-
-What you get:
-
-- **The 1.31.0-blaze APK** (in [Releases](../../releases)): GameAnalytics tracking
-  blocked, the BLAZE blocks, the version shown as "1.31.0-blaze", and a news-board
-  Discord button.
-- **A server** that runs in a console window on your PC (`start.bat` / `start.sh`):
-  logins, the world, maps, private worlds, moderation, and a web editor at `/editor`.
-- **The 1.31 world**: Starter House, Playground, Blue House, the Wilds, the tutorial,
-  the Build-A-Map rooms and more, loaded into your database the first time it starts.
-
-Not included: community worlds, live player lookups from real Yeeps, a Discord bot,
-or a Photon bot.
+else's game server.
 
 Join the Discord: https://discord.gg/VhFmdAyXGk
 
-> **Status (kit1):** the server is tested end to end (`tools/smoke_test.py`). The APK's
-> settings file and Photon app swap haven't been tested on a headset yet: please report
-> how it goes in the Discord.
-
 Thanks to @Mixid for the aws api!
+
+> **Status (kit1):** the server and the tools are tested end to end
+> (`tools/smoke_test.py`, a fresh install, and building a host APK). The APK
+> hasn't been tested on a headset yet: please report how it goes in the Discord.
+
+## What you get
+
+- **The APK** (in [Releases](../../releases)): the original Yeeps 1.31.0 game with
+  GameAnalytics tracking blocked, the version shown as "1.31.0-blaze", the BLAZE
+  block, and a news-board Discord button. No other added content.
+- **A server** that runs in a console window on your PC (`start.bat` on Windows,
+  `start.sh` on Linux/macOS): logins, the world, private worlds, moderation, and a
+  web editor at `/editor`.
+- **The 1.31 world layout**: Starter House, Playground, Blue House, the Wilds, the
+  tutorial, the Build-A-Map rooms and the rest, with **no maps built in them**: every
+  room starts empty. See [Maps](#maps).
+- **Tools** to make your APK, check your server, and add your own blocks and music.
+
+Not included: community worlds, live player lookups from real Yeeps, a Discord bot, or
+a Photon bot.
 
 ## What you need
 
 - A PC that stays on while people play (Windows, Linux or macOS).
-- [Python 3.11+](https://www.python.org/downloads/) (on Windows tick "Add to PATH").
-- A database: either [MongoDB Community Server](https://www.mongodb.com/try/download/community)
-  on the same PC, or a free [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster.
-- A free [Photon](https://dashboard.photonengine.com) account.
-- To make your APK: Java (a JDK) and Android build-tools (`zipalign`, `apksigner`).
-- Quest headsets with developer mode, and [SideQuest](https://sidequestvr.com) or `adb`.
+- **Python 3.11+**: on Windows get it from https://www.python.org/downloads/ and tick
+  "Add python.exe to PATH" (the "python" that opens the Microsoft Store doesn't work).
+- **A database**: [MongoDB Community Server](https://www.mongodb.com/try/download/community)
+  on the same PC (default settings are fine), or a free
+  [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) cluster.
+- **A free [Photon](https://dashboard.photonengine.com) account.**
+- **To make your APK: Java and Android build-tools.**
+  - Java: [Eclipse Temurin JDK](https://adoptium.net) (Windows: tick "Add to PATH").
+  - Android build-tools (`zipalign`, `apksigner`): install
+    [Android Studio](https://developer.android.com/studio) and add "Android SDK
+    Build-Tools" in its SDK Manager, or the command-line tools and run
+    `sdkmanager "build-tools;34.0.0"`. Then add the build-tools folder to PATH, or set
+    `ANDROID_HOME` (Windows: usually `%LOCALAPPDATA%\Android\Sdk`).
+- **Quest headsets** with developer mode, and [SideQuest](https://sidequestvr.com) or `adb`.
 
 ## Setup
 
 ### 1. Make two Photon apps
 
-At https://dashboard.photonengine.com, create:
-
-- a **PUN** app (Multiplayer Game, Photon PUN), and
-- a **Voice** app (Photon Voice).
-
-Copy both App IDs. No custom authentication is needed.
+At https://dashboard.photonengine.com create a **PUN** app (Multiplayer Game, Photon PUN)
+and a **Voice** app (Photon Voice). Copy both App IDs. No custom authentication needed.
 
 ### 2. Start the server
 
@@ -56,8 +63,7 @@ editor password (shown in the window). Then edit `server/.env`:
 - `MONGO_URI`: leave the default for a local MongoDB, or paste your Atlas connection string.
 - `PUBLIC_BASE_URL`: the address players' headsets will use (see step 3).
 
-Close the window and start it again after editing `.env`. Keep the window open while
-people play.
+Close the window and start it again after editing `.env`. Keep it open while people play.
 
 Check it: `python tools/smoke_test.py http://127.0.0.1:8000 --editor-password <password>`
 should end with `ALL PASS`.
@@ -66,15 +72,16 @@ should end with `ALL PASS`.
 
 The headsets need to reach your PC. Pick one:
 
-- **Same Wi-Fi only:** `http://<your PC's local IP>:8000`, for example `http://192.168.1.20:8000`.
-  Your PC's firewall must allow incoming connections on that port (Windows asks the
-  first time; on Linux with ufw: `sudo ufw allow 8000/tcp`).
+- **Same Wi-Fi only:** `http://<your PC's local IP>:8000`, e.g. `http://192.168.1.20:8000`
+  (Windows: `ipconfig` shows it). Your firewall must allow the port: Windows asks the
+  first time the server starts (allow "Private networks"); on Linux with ufw run
+  `sudo ufw allow 8000/tcp`.
 - **Over the internet, fixed address (best):** a Cloudflare named tunnel with your own
-  domain, for example `https://yeeps.your-domain.com`. See Cloudflare's
-  "Create a tunnel" guide and point it at `http://127.0.0.1:8000`.
-- **Quick test over the internet:** `start.bat --tunnel` / `./start.sh --tunnel` opens a
-  free `https://....trycloudflare.com` address. It changes every time, so only use it
-  for testing (see "Override file" below).
+  domain, e.g. `https://yeeps.your-domain.com`, pointed at `http://127.0.0.1:8000`
+  (see Cloudflare's "Create a tunnel" guide).
+- **Quick internet test:** `start.bat --tunnel` / `./start.sh --tunnel` opens a free
+  `https://....trycloudflare.com` address (Windows: `winget install --id Cloudflare.cloudflared`
+  first). It changes every time, so use it only for testing (see "Override file").
 
 Put the same address in `PUBLIC_BASE_URL` in `server/.env`.
 
@@ -87,19 +94,56 @@ python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk --server http://
 ```
 
 It writes your settings into the APK and signs it with your own key (created in
-`tools/.keys/` the first time; keep that folder, or later APKs won't install over
+`tools/.keys/` the first time: keep that folder, or later APKs won't install over
 earlier ones). The output is `Yeeps-1.31.0-blaze-<your server>.apk`.
 
 ### 5. Install it on each headset
 
-With SideQuest, or `adb install -r <your apk>`. If another Yeeps 1.31.0-blaze build is
-already installed, uninstall it first: a different signing key can't update it.
+With SideQuest, or `adb install -r <your apk>`. If another Yeeps build is already
+installed, uninstall it first: a different signing key can't update it.
 
 ### 6. Use the editor
 
-Open `<your server>/editor` and sign in with `EDITOR_PASSWORD` from `server/.env`.
-From there you can edit players, ban, kick, change the news board, edit maps and rooms,
-and more.
+Open `<your server>/editor` and sign in with `EDITOR_PASSWORD` from `server/.env`:
+players, bans, kicks, the news board, rooms, maps, disks, and more.
+
+## Maps
+
+The kit has no map builds. To get maps, use
+[YeepsMapLoader](https://github.com/Blazeisodd/YeepsMapLoader) (a Unity tool that loads
+real Yeeps rooms), then import a room's block list into one of your rooms with the
+editor's **Maps** tab. Blocks that don't exist in 1.31 are dropped on import.
+You can also build in game: set `UNLOCK_ALL_MODES=1` in `.env` and restart while you
+build. Then anyone can switch rooms to creative and their builds are saved, so turn
+it off again when your maps are done (rooms are editor-only otherwise).
+
+## Your own music (disks)
+
+- **Easiest, no new APK:** the editor's **Disks** tab. Upload an audio file for a
+  record and every player hears it on that record, straight from your server.
+- **Inside the APK (permanent):**
+  ```
+  python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data
+  python tools/data/bake_disk.py data --list
+  python tools/data/bake_disk.py data --clip SuburbTheme --audio song.mp3 --art recordArtTexture_suburbTheme --label cover.png
+  python tools/configure_apk.py ... --data data
+  ```
+
+## Your own blocks (prefabs)
+
+Add a picture block (a cube with your picture on every side):
+
+```
+python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data
+python tools/data/add_picture_block.py data/data.unity3d data/data.unity3d --key 1x1_stuffedMyDog --name "My Dog" --image dog.png
+python tools/configure_apk.py ... --data data
+```
+
+Then give players the block: in the editor add the key (here `1x1_stuffedMyDog`) to
+`ownedPatterns` (Default player data for new players, or each player).
+
+**The BLAZE block** (`1x5x2_stuffedTextBlaze`) is only for players with the `blaze`
+role: give it to someone in the editor (Players tab, roleKeys).
 
 ## Override file (testing)
 
@@ -116,9 +160,9 @@ photon_voice_app_id=<Voice app id>
 
 ## Using Claude
 
-This repo is set up for [Claude Code](https://claude.com/claude-code): open it and
-ask, for example, "set up my server and make my APK". `CLAUDE.md` explains everything
-to Claude.
+This repo is set up for [Claude Code](https://claude.com/claude-code): open it and ask,
+for example, "set up my server and make my APK", "add a picture block", or "put my song
+on a record". `CLAUDE.md` explains everything to Claude.
 
 ## Disclaimer
 

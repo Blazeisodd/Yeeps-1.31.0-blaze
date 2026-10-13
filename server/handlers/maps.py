@@ -49,6 +49,11 @@ _official_cache: dict = {}
 async def _is_official_room(room_key: str) -> bool:
     if not room_key or room_key.startswith("p_"):
         return False
+    # Kit: UNLOCK_ALL_MODES=1 is the host's build switch, so official rooms take
+    # in-game saves while it's on (turn it off again when the maps are done).
+    from config import UNLOCK_ALL_MODES
+    if UNLOCK_ALL_MODES:
+        return False
     if room_key.startswith(_OFFICIAL_PREFIX):
         return True
     import time as _t
