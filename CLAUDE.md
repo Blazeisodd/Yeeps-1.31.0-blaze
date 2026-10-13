@@ -92,6 +92,8 @@ Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discor
   (every 2 s from `AccountOnlineManager.Update`) does the same for the Photon Voice
   `VoiceAppSettings` asset and any `VoiceConnection`. Ids are always replaced, so an
   unset id fails to connect instead of using whoever's app the APK was built with.
+  The template APK's own ids (`PhotonServerSettings`, `VoiceAppSettings` in
+  `resources.assets`) are blanked to all zeros as well.
 - `discord` -> the news board's Discord button (default `https://discord.gg/VhFmdAyXGk`).
 - The APK allows plain HTTP (`res/xml/network_sec_config.xml` cleartext = true).
 
