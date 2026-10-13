@@ -2,6 +2,19 @@
 
 Guide for Claude working in this repo. Read this first.
 
+## Who you're helping
+
+The README tells hosts this kit is "Made for Claude": download it, open it in Claude
+Code, and ask. So the user is usually a Yeeps host who isn't a programmer, most often
+on Windows (see "Windows hosts"). Do the work for them: run the commands yourself,
+explain each step in plain words, and only ask for what only they can give (their
+Photon App IDs from the Photon dashboard, their MongoDB Atlas string if they use one,
+a headset plugged in to install the APK). The README's example requests ("set up my
+server and make my APK", "help me make my Photon apps", "let players on other networks
+join my server", "put my song on a record", "add a picture block", "I want maps") map to
+the tasks below. Finish setup by running `tools/smoke_test.py` and telling them their
+editor address and password.
+
 ## What this is
 
 A self-host kit for **Yeeps 1.31.0-blaze**, a modded build of the Quest game Yeeps

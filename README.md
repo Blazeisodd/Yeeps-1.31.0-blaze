@@ -11,6 +11,28 @@ Thanks to @Mixid for the aws api!
 > **Status (kit1):** tested end to end, including a host running their own server and
 > playing on a headset. Problems or questions: ask in the Discord.
 
+## Made for Claude
+
+This kit is made to be set up with **[Claude Code](https://claude.com/claude-code)**, an
+AI assistant that works on your PC. You don't need to know Python or Android tools:
+the repo has a guide written for Claude (`CLAUDE.md`), and Claude follows it to do the
+setup with you.
+
+1. Install Claude Code from https://claude.com/claude-code.
+2. Download this repo (green **Code** button > **Download ZIP**, then unzip it, or
+   `git clone` it) and open the folder in Claude Code.
+3. Ask it what you want, for example:
+   - "Set up my server and make my APK"
+   - "Help me make my Photon apps"
+   - "Let players on other networks join my server"
+   - "Put my song on a record"
+   - "Add a picture block of my dog"
+   - "I want maps"
+
+Claude runs the steps on your own PC and tells you when it needs something from you
+(your Photon App IDs, a headset plugged in). The rest of this README is the same steps
+by hand, if you'd rather do it yourself.
+
 ## What you get
 
 - **The APK** (in [Releases](../../releases)): the original Yeeps 1.31.0 game with
@@ -169,12 +191,6 @@ photon_voice_app_id=<Voice app id>
 - **The game can't reach the server:** check `PUBLIC_BASE_URL`, the `--server` you built
   the APK with, and your firewall. From the headset's network,
   `<server>/health` should answer.
-
-## Using Claude
-
-This repo is set up for [Claude Code](https://claude.com/claude-code): open it and ask,
-for example, "set up my server and make my APK", "add a picture block", or "put my song
-on a record". `CLAUDE.md` explains everything to Claude.
 
 ## Disclaimer
 
