@@ -8,9 +8,8 @@ Join the Discord: https://discord.gg/VhFmdAyXGk
 
 Thanks to @Mixid for the aws api!
 
-> **Status (kit1):** the server and the tools are tested end to end
-> (`tools/smoke_test.py`, a fresh install, and building a host APK). The APK
-> hasn't been tested on a headset yet: please report how it goes in the Discord.
+> **Status (kit1):** tested end to end, including a host running their own server and
+> playing on a headset. Problems or questions: ask in the Discord.
 
 ## What you get
 
