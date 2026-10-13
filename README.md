@@ -110,16 +110,18 @@ players, bans, kicks, the news board, rooms, maps, disks, and more.
 
 The kit has no map builds. To get maps, use
 [YeepsMapLoader](https://github.com/Blazeisodd/YeepsMapLoader) (a Unity tool that loads
-real Yeeps rooms), then import a room's block list into one of your rooms with the
-editor's **Maps** tab. Blocks that don't exist in 1.31 are dropped on import.
+real Yeeps rooms), then paste the room's block list (JSON) into **Maps > Import a map
+into a room** in the editor. Blocks that don't exist in 1.31 are dropped on import.
 You can also build in game: set `UNLOCK_ALL_MODES=1` in `.env` and restart while you
 build. Then anyone can switch rooms to creative and their builds are saved, so turn
 it off again when your maps are done (rooms are editor-only otherwise).
 
 ## Your own music (disks)
 
-- **Easiest, no new APK:** the editor's **Disks** tab. Upload an audio file for a
-  record and every player hears it on that record, straight from your server.
+- **Easiest, no new APK:** the editor's **Disks** tab. Pick a record, pick an audio
+  file (mp3, ogg, wav, ...) and Upload: every player hears it on that record the next
+  time they start the game. Your browser converts it to WAV (OGG is sent as is); about
+  4 minutes fit.
 - **Inside the APK (permanent):**
   ```
   python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data

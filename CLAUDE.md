@@ -38,7 +38,9 @@ user wants maps (official maps, a real Yeeps room, "put a map in Starter House",
    (`/rooms`, `/map`). Don't rebuild that tool here; use it as-is.
 2. The relay's `/map` reply is `{ok, roomKey, dimensions, blocks:[{name,x,y,z,fwd,up,color,owner,...}]}`.
    That exact JSON (or just the blocks array) imports into one of the host's rooms with the
-   editor's **Maps** tab (API: `POST /editor/api/map/import`, `routers/editor_router.py`).
+   editor's **Maps > Import a map into a room** box (API: `POST /editor/api/map/import`
+   {roomKey, map}, `routers/editor_router.py`; stored in `imported_maps`, served by
+   `dynamo_ops._map_doc`).
    Import keeps only block keys listed in the `valid_mapobject_keys` global, so 2.x-only
    blocks from live Yeeps are dropped instead of breaking the room.
 3. Or build in game: `UNLOCK_ALL_MODES=1` in `server/.env` (restart) lets anyone switch
@@ -107,8 +109,12 @@ All game-data edits work on two files copied out of the APK, then put back:
   --label <image>]` converts the audio (ffmpeg via imageio-ffmpeg) to mono PCM16 FSB5,
   appends it to `sharedassets1.resource` and repoints the AudioClip.
 - **Music without a new APK** (simpler, usually what the user wants): the editor's
-  **Disks** tab uploads audio for a record; the server lists it in `/client/feed.txt`
-  (`D` lines) and the mod swaps that record's clip on every headset.
+  **Disks** tab. The page converts any audio to mono 22 kHz 16-bit WAV in the browser
+  (OGG is sent as is: the mod only decodes OGG and PCM WAV) and posts it raw to
+  `POST /editor/api/disks/<record_key>?ext=wav|ogg` (12 MB request limit; stored in the
+  `disk_audio` collection, `services/remote.py`). The server lists it in
+  `/client/feed.txt` (`D<TAB>clip<TAB>ext<TAB>url`) and the mod downloads it at launch and
+  swaps that record's AudioClip when it plays. `DELETE /editor/api/disks/<clip>` removes it.
 - **Other kinds of blocks** (new shapes, wiring, etc.) need real Unity asset work:
   use `add_picture_block.py` as the template (it shows the MapObject raw layout:
   GO pptr, enabled, script pptr, name, size 3i, ..., sounds, ints) and test on a headset.

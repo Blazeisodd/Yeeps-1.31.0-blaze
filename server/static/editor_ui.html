@@ -115,6 +115,7 @@
     <button data-t="banned">Banned</button>
     <button data-t="default">Default</button>
     <button data-t="maps">Maps</button>
+    <button data-t="disks">Disks</button>
     <button data-t="news">News</button>
     <button data-t="announce">Announce</button>
     <button data-t="errors">Errors</button>
@@ -314,8 +315,36 @@ const tabs = {
         <button class="go" id="pwgo">Find</button></div>
       <ul class="list" id="pwres" style="display:none"></ul>
       <p><button class="go" id="ownfix">Give unknown-owner blocks to me</button> <span class="muted" id="ownfixmsg">blocks placed by accounts that aren't in the database (official players, bots) become yours</span></p>
+      <details style="margin:8px 0"><summary>Import a map into a room</summary>
+        <div style="padding:10px 12px">
+          <p class="note">Paste a map's block list (the JSON from YeepsMapLoader / the /map API, or a bare blocks array) or pick a .json file, choose the room, then Import. Blocks that don't exist in 1.31 are left out. The room's current map is replaced.</p>
+          <div class="row" style="align-items:center"><input type="text" id="imroom" placeholder="room key, e.g. official_1" style="min-width:220px">
+            <input type="file" accept=".json,application/json,text/plain" id="imfile"></div>
+          <textarea id="imjson" style="min-height:140px" placeholder='{"ok":true,"roomKey":"...","blocks":[{"name":"1x1_wooden","x":0,"y":0,"z":0,"fwd":0,"up":0,"color":"white","owner":""}]}'></textarea>
+          <div class="row" style="margin-top:8px"><button class="go" id="imgo">Import</button> <span class="muted" id="immsg"></span></div>
+        </div>
+      </details>
       <div id="folders" class="muted">loading maps...</div>
       <div id="panel"></div>`;
+    document.getElementById("imfile").onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      document.getElementById("imjson").value = await f.text();
+    };
+    document.getElementById("imgo").onclick = async () => {
+      const room = document.getElementById("imroom").value.trim();
+      let map; try { map = JSON.parse(document.getElementById("imjson").value); }
+      catch (e) { return toast("That isn't valid JSON: " + e.message, true); }
+      const rk = room || (map && map.roomKey) || "";
+      if (!rk) return toast("Type the room key to import into", true);
+      if (!confirm("Replace the map of " + rk + " with this one?")) return;
+      try {
+        const r = await api("/map/import", { method: "POST", headers: { "Content-Type": "application/json" },
+                                              body: JSON.stringify({ roomKey: rk, map }) });
+        document.getElementById("immsg").textContent = "Imported " + r.blockCount + " blocks into " + r.roomKey +
+          (r.dropped ? " (" + r.dropped + " left out, e.g. " + (r.droppedKeysSample || []).slice(0, 3).join(", ") + ")" : "");
+        toast("Map imported into " + r.roomKey); await refresh();
+      } catch (e) { toast(e.message, true); }
+    };
     let rooms = [], mapped = {};
     async function refresh() {
       [rooms, mapped] = [await api("/rooms?limit=1000"), {}];
@@ -509,6 +538,66 @@ const tabs = {
       } catch (e) { toast(e.message, true); }
     };
     try { await refresh(); } catch (e) { document.getElementById("folders").textContent = e.message; }
+  },
+  disks: async () => {
+    view.innerHTML = `<p class="note">Your own music on the game's record disks, for everyone, with no new APK. Pick a record, pick an audio file (mp3, ogg, wav, ...), Upload. Players hear it the next time they start the game. Files are converted to mono WAV in your browser (OGG files are sent as they are); about 4 minutes fit.</p>
+      <div class="row" style="align-items:center"><select id="drec" style="min-width:240px"></select>
+        <input type="file" accept="audio/*,.ogg,.mp3,.wav,.m4a,.flac" id="dfile">
+        <button class="go" id="dgo">Upload</button> <span class="muted" id="dmsg"></span></div>
+      <h3 style="margin-top:18px">Records with your music</h3><ul class="list" id="dlist"><li class="muted">loading...</li></ul>`;
+    const sel = document.getElementById("drec");
+    let recs = [];
+    try { const d = await api("/default"); recs = ((d.value || d).ownedPatterns || []).filter(k => k.startsWith("record_")).sort(); } catch (_) {}
+    if (!recs.length) recs = ["record_suburbTheme", "record_snowTheme", "record_oceanTheme", "record_fantasyTheme"];
+    sel.innerHTML = recs.map(r => `<option value="${esc(r)}">${esc(r.slice(7))}</option>`).join("");
+    async function load() {
+      const ul = document.getElementById("dlist");
+      try {
+        const d = (await api("/disks")).disks || [];
+        ul.innerHTML = d.length ? "" : '<li class="muted">none yet</li>';
+        d.forEach(x => {
+          const li = document.createElement("li");
+          li.innerHTML = `<b>${esc(x.clip)}</b> <span class="muted">${esc(x.ext)}, ${Math.round((x.size || 0) / 1024)} KB, by ${esc(x.by || "?")}</span> <button class="del">Remove</button>`;
+          li.querySelector("button").onclick = async () => {
+            if (!confirm("Put the original music back on " + x.clip + "?")) return;
+            try { await api("/disks/" + encodeURIComponent(x.clip), { method: "DELETE" }); toast("Removed " + x.clip); load(); }
+            catch (e) { toast(e.message, true); }
+          };
+          ul.appendChild(li);
+        });
+      } catch (e) { ul.innerHTML = `<li class="muted">${esc(e.message)}</li>`; }
+    }
+    function wav16(samples, rate) {            // mono Float32 -> 16-bit PCM WAV
+      const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+      const w = (o, t) => { for (let i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+      w(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); w(8, "WAVE"); w(12, "fmt ");
+      v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+      v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, "data");
+      v.setUint32(40, samples.length * 2, true);
+      for (let i = 0; i < samples.length; i++) { const x = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+      return new Blob([buf], { type: "audio/wav" });
+    }
+    document.getElementById("dgo").onclick = async () => {
+      const f = document.getElementById("dfile").files[0], msg = document.getElementById("dmsg");
+      if (!f) return toast("Pick an audio file first", true);
+      let body = f, ext = "ogg";
+      try {
+        if (!/\.ogg$/i.test(f.name)) {
+          msg.textContent = "converting...";
+          const rate = 22050, ac = new AudioContext();
+          const src = await ac.decodeAudioData(await f.arrayBuffer()); ac.close();
+          const off = new OfflineAudioContext(1, Math.ceil(src.duration * rate), rate);
+          const node = off.createBufferSource(); node.buffer = src; node.connect(off.destination); node.start();
+          body = wav16((await off.startRendering()).getChannelData(0), rate); ext = "wav";
+        }
+        if (body.size > 11.5 * 1024 * 1024) { msg.textContent = ""; return toast("Too long (over ~4 minutes). Trim it, or upload an .ogg.", true); }
+        msg.textContent = "uploading...";
+        const r = await api("/disks/" + encodeURIComponent(document.getElementById("drec").value) + "?ext=" + ext,
+                            { method: "POST", body });
+        msg.textContent = ""; toast("Music set on " + r.clip + " (" + Math.round(r.bytes / 1024) + " KB)"); load();
+      } catch (e) { msg.textContent = ""; toast(e.message, true); }
+    };
+    load();
   },
   news: async () => {
     view.innerHTML = `<p class="note">In-game news / announcement. This text shows to players in the game. Supports line breaks.</p>
