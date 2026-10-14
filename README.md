@@ -8,8 +8,9 @@ Join the Discord: https://discord.gg/VhFmdAyXGk
 
 Thanks to @Mixid for the aws api!
 
-> **Status (kit1):** tested end to end, including a host running their own server and
-> playing on a headset. Problems or questions: ask in the Discord.
+> **Status (kit2):** the game and the BNM mod menu, nothing else (kit1 also had a web
+> editor and other extras). kit1 was tested end to end on a headset; kit2 is the same
+> game with those extras taken out. Problems or questions: ask in the Discord.
 
 ## Made for Claude
 
@@ -37,17 +38,19 @@ by hand, if you'd rather do it yourself.
 
 - **The APK** (in [Releases](../../releases)): the original Yeeps 1.31.0 game with
   GameAnalytics tracking blocked, the version shown as "1.31.0-blaze", the BLAZE
-  block, and a news-board Discord button. No other added content.
+  block, the news board with its Discord button, and the BNM mod menu (opened from the
+  news board). No other added content.
 - **A server** that runs in a console window on your PC (`start.bat` on Windows,
-  `start.sh` on Linux/macOS): logins, the world, private worlds, moderation, and a
-  web editor at `/editor`.
+  `start.sh` on Linux/macOS): logins, the world and private worlds. There's no admin
+  website: see [Players, bans and roles](#players-bans-and-roles).
 - **The 1.31 world layout**: Starter House, Playground, Blue House, the Wilds, the
   tutorial, the Build-A-Map rooms and the rest, with **no maps built in them**: every
   room starts empty. See [Maps](#maps).
-- **Tools** to make your APK, check your server, and add your own blocks and music.
+- **Tools** to make your APK, check your server, import maps, and add your own blocks
+  and music.
 
-Not included: community worlds, live player lookups from real Yeeps, a Discord bot, or
-a Photon bot.
+Not included: an admin website, community worlds, live player lookups from real Yeeps,
+a Discord bot, or a Photon bot.
 
 ## What you need
 
@@ -78,16 +81,12 @@ and a **Voice** app (Photon Voice). Copy both App IDs. No custom authentication 
 
 Windows: double-click `start.bat`. Linux/macOS: `./start.sh`.
 
-The first run installs the Python packages and creates `server/.env` with a random
-editor password (shown in the window). Then edit `server/.env`:
-
-- `MONGO_URI`: leave the default for a local MongoDB, or paste your Atlas connection string.
-- `PUBLIC_BASE_URL`: the address players' headsets will use (see step 3).
+The first run installs the Python packages and creates `server/.env`. In it, set
+`MONGO_URI`: leave the default for a local MongoDB, or paste your Atlas connection string.
 
 Close the window and start it again after editing `.env`. Keep it open while people play.
 
-Check it: `python tools/smoke_test.py http://127.0.0.1:8000 --editor-password <password>`
-should end with `ALL PASS`.
+Check it: `python tools/smoke_test.py http://127.0.0.1:8000` should end with `ALL PASS`.
 
 ### 3. Pick your server's address
 
@@ -104,14 +103,12 @@ The headsets need to reach your PC. Pick one:
   `https://....trycloudflare.com` address (Windows: `winget install --id Cloudflare.cloudflared`
   first). It changes every time, so use it only for testing (see "Override file").
 
-Put the same address in `PUBLIC_BASE_URL` in `server/.env`.
-
 ### 4. Make your APK
 
-Download `Yeeps-1.31.0-blaze-kit1.apk` from Releases, then:
+Download `Yeeps-1.31.0-blaze-kit2.apk` from Releases, then:
 
 ```
-python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk --server http://192.168.1.20:8000 --photon-app-id <PUN app id> --photon-voice-app-id <Voice app id>
+python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit2.apk --server http://192.168.1.20:8000 --photon-app-id <PUN app id> --photon-voice-app-id <Voice app id>
 ```
 
 It writes your settings into the APK and signs it with your own key (created in
@@ -123,50 +120,56 @@ earlier ones). The output is `Yeeps-1.31.0-blaze-<your server>.apk`.
 With SideQuest, or `adb install -r <your apk>`. If another Yeeps build is already
 installed, uninstall it first: a different signing key can't update it.
 
-### 6. Use the editor
+## Players, bans and roles
 
-Open `<your server>/editor` and sign in with `EDITOR_PASSWORD` from `server/.env`:
-players, bans, kicks, the news board, rooms, maps, disks, and more.
+There's no admin website. Everything lives in your MongoDB database (`DB_NAME` in
+`server/.env`, collections `accounts`, `rooms`, `globals`, ...). Ask Claude ("ban
+<player>", "give <player> the BLAZE block"), or edit it yourself with
+[MongoDB Compass](https://www.mongodb.com/products/compass). Players who should ban and
+warn from inside the game go in `MOD_STAFF` in `server/.env`.
 
 ## Maps
 
 The kit has no map builds. To get maps, use
 [YeepsMapLoader](https://github.com/Blazeisodd/YeepsMapLoader) (a Unity tool that loads
-real Yeeps rooms), then paste the room's block list (JSON) into **Maps > Import a map
-into a room** in the editor. Blocks that don't exist in 1.31 are dropped on import.
-You can also build in game: set `UNLOCK_ALL_MODES=1` in `.env` and restart while you
-build. Then anyone can switch rooms to creative and their builds are saved, so turn
-it off again when your maps are done (rooms are editor-only otherwise).
+real Yeeps rooms), save the room's block list (JSON) to a file, and import it:
+
+```
+python tools/import_map.py --room official_1 map.json
+```
+
+Blocks that don't exist in 1.31 are left out. Players see the map the next time they
+load that room. You can also build in game: set `UNLOCK_ALL_MODES=1` in `.env` and
+restart while you build. Then anyone can switch rooms to creative and their builds are
+saved, so turn it off again when your maps are done.
 
 ## Your own music (disks)
 
-- **Easiest, no new APK:** the editor's **Disks** tab. Pick a record, pick an audio
-  file (mp3, ogg, wav, ...) and Upload: every player hears it on that record the next
-  time they start the game. Your browser converts it to WAV (OGG is sent as is); about
-  4 minutes fit.
-- **Inside the APK (permanent):**
-  ```
-  python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data
-  python tools/data/bake_disk.py data --list
-  python tools/data/bake_disk.py data --clip SuburbTheme --audio song.mp3 --art recordArtTexture_suburbTheme --label cover.png
-  python tools/configure_apk.py ... --data data
-  ```
+Put your song on a record inside the APK, then give players the new APK:
+
+```
+python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit2.apk data
+python tools/data/bake_disk.py data --list
+python tools/data/bake_disk.py data --clip SuburbTheme --audio song.mp3 --art recordArtTexture_suburbTheme --label cover.png
+python tools/configure_apk.py ... --data data
+```
 
 ## Your own blocks (prefabs)
 
 Add a picture block (a cube with your picture on every side):
 
 ```
-python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data
+python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit2.apk data
 python tools/data/add_picture_block.py data/data.unity3d data/data.unity3d --key 1x1_stuffedMyDog --name "My Dog" --image dog.png
 python tools/configure_apk.py ... --data data
 ```
 
-Then give players the block: in the editor add the key (here `1x1_stuffedMyDog`) to
-`ownedPatterns` (Default player data for new players, or each player).
+Then give players the block: add the key (here `1x1_stuffedMyDog`) to their
+`ownedPatterns` in the database (ask Claude: "give everyone my dog block").
 
 **The BLAZE block** (`1x5x2_stuffedTextBlaze`) is only for players with the `blaze`
-role: give it to someone in the editor (Players tab, roleKeys).
+role: put their account ID in `BLAZE_HOLDERS` in `server/.env` and add `blaze` to
+their `roleKeys` (ask Claude: "give <player> the BLAZE block").
 
 ## Override file (testing)
 
@@ -184,12 +187,12 @@ photon_voice_app_id=<Voice app id>
 ## Troubleshooting
 
 - **"address already in use" when the server starts:** another program uses port 8000.
-  Set `PORT=8001` (or any free port) in `server/.env`, and use that port in
-  `PUBLIC_BASE_URL` and in the APK's `--server`.
+  Set `PORT=8001` (or any free port) in `server/.env`, and use that port in the APK's
+  `--server`.
 - **"Install Python 3.11 or newer"** on Windows: install it from python.org with
   "Add python.exe to PATH" ticked, then open a new window.
-- **The game can't reach the server:** check `PUBLIC_BASE_URL`, the `--server` you built
-  the APK with, and your firewall. From the headset's network,
+- **The game can't reach the server:** check the `--server` you built the APK with
+  and your firewall. From the headset's network,
   `<server>/health` should answer.
 
 ## Disclaimer

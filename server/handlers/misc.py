@@ -62,7 +62,7 @@ async def handle_fetch_popular_world_list(body: dict) -> dict:
 
 
 async def handle_log_debug(body: dict) -> dict:
-    """Record what the client reports so it can be read back from /editor."""
+    """Record what the client reports (the last 200, in the debug_logs collection)."""
     entry = {
         "at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
         "payload": body,
@@ -77,12 +77,6 @@ async def handle_log_debug(body: dict) -> dict:
             await debug_logs.delete_many({"_id": {"$in": [d["_id"] async for d in old]}})
     except Exception as e:
         print(f"[debug] could not store entry: {e}")
-    try:
-        from services.client_errors import ingest_background
-        ingest_background(body.get("accountID", ""), body.get("logs", ""),
-                          str(body.get("clientVersion") or ""))
-    except Exception as e:
-        print(f"[debug] error tracking failed: {e}")
     return {"success": 1}
 
 

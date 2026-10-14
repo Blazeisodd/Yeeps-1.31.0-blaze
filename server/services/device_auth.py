@@ -24,6 +24,7 @@ import re
 import time
 
 MODE = os.getenv("DEVICE_AUTH", "observe").strip().lower()
+# EDITOR_SECRET: what kit1 servers (which had an editor) used, so their bound headsets still match.
 _PEPPER = os.getenv("DEVICE_KEY_PEPPER") or os.getenv("EDITOR_SECRET", "") or "blaze-device"
 _KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 

@@ -16,9 +16,10 @@ Add your own picture block to the Yeeps 1.31 game data: a 1x1x1 cotton cube
   (the game repaints every slot with the palette color otherwise).
 
 The key must start with "1x1_" and be unique. Players need the key in their
-owned items to place it: add it to ownedPatterns in the editor's Default player
-data (new players) or on each player. Map imports in the editor only keep keys
-listed in the "valid_mapobject_keys" global, so add it there too if you import
+owned items to place it: add it to ownedPatterns (the "default_account_override"
+global for new players, and each player) in the database. Map imports
+(tools/import_map.py) only keep keys listed in the "valid_mapobject_keys" global,
+so add it there too if you import
 maps that use it. Then put the data back into an APK with
 tools/configure_apk.py --data.
 """

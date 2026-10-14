@@ -36,5 +36,5 @@ if [ "$1" = "--tunnel" ]; then
   echo "================================================================"
 fi
 
-echo "Server on port $PORT (Ctrl+C to stop). Editor: http://127.0.0.1:$PORT/editor"
+echo "Server on port $PORT (Ctrl+C to stop)."
 exec .venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port "$PORT"

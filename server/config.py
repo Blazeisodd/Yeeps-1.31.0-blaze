@@ -33,24 +33,10 @@ def _set(name: str) -> set:
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://127.0.0.1:27017")
 DB_NAME = os.getenv("DB_NAME", "Yeeps131")
 
-# Prefix for webhook posts (handy if you run more than one server).
-INSTANCE_LABEL = os.getenv("INSTANCE_LABEL", "").strip()
-
-
-def labeled(text: str) -> str:
-    return f"[{INSTANCE_LABEL}] {text}" if INSTANCE_LABEL else text
-
-
 SERVER_PORT = int(os.getenv("PORT", "8000"))
 # Load the 1.31 world (seed/world/*.json) into an empty database at startup.
 SEED_DB = os.getenv("SEED_WORLD", "1") == "1"
 
-# Not used by the kit (the owner's relay to real Yeeps); kept so old imports work.
-YEEPS_PROXY_URL = os.getenv("YEEPS_PROXY_URL", "")
-
-# Public address of THIS server, exactly what the APK's "server" setting is
-# (the game fetches feed/disk/screen/video URLs from it).
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", f"http://127.0.0.1:{SERVER_PORT}").rstrip("/")
 
 # Version the 1.31.0-blaze client reports; other versions are told to update.
 REQUIRED_CLIENT_VERSION = os.getenv("REQUIRED_CLIENT_VERSION", "1.31.0-blaze")
@@ -108,21 +94,8 @@ def valid_client_tokens() -> set:
     return {client_token(w - 1), client_token(w), client_token(w + 1)}
 
 
-# ─── Discord (all optional; blank = off) ─────────────────────────────────────
-# Webhooks the server posts to: ADMIN = editor activity, INGAME = in-game map
-# edits, EDITOR_PW = not used by the kit's password sign-in.
-ADMIN_DISCORD_WEBHOOK = os.getenv("ADMIN_DISCORD_WEBHOOK", "")
-INGAME_DISCORD_WEBHOOK = os.getenv("INGAME_DISCORD_WEBHOOK", "")
-EDITOR_PW_ROTATE_SECONDS = int(os.getenv("EDITOR_PW_ROTATE_SECONDS", str(3 * 3600)))
-EDITOR_PW_WEBHOOK = os.getenv("EDITOR_PW_WEBHOOK", "")
+# The news board's Discord button.
 DISCORD_INVITE_URL = os.getenv("DISCORD_INVITE_URL", "https://discord.gg/VhFmdAyXGk")
-
-# ─── Editor (the web admin site at /editor) ──────────────────────────────────
-# Sign-in password for the host. Blank = the editor can't be signed into.
-EDITOR_PASSWORD = os.getenv("EDITOR_PASSWORD", "")
-
-# Local Photon bot (not part of the kit). Empty = bots disabled.
-BOT_KEY = os.getenv("BOT_KEY", "")
 
 # Blocks owned by accounts that aren't in the database (official players in the
 # copied world maps) are given to this account on map saves. Blank = leave them.

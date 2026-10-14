@@ -23,6 +23,6 @@ if /i "%~1"=="--tunnel" (
   echo Quick-tunnel addresses change every time; see README for a fixed address.
 )
 
-echo Server on port %PORT% (close this window to stop). Editor: http://127.0.0.1:%PORT%/editor
+echo Server on port %PORT% (close this window to stop).
 .venv\Scripts\python -m uvicorn main:app --host 0.0.0.0 --port %PORT%
 pause

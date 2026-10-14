@@ -6,7 +6,7 @@ your settings into it (lib/arm64-v8a/libblazeconfig.so, a small text file the
 game's mod library reads at startup), then re-aligns and signs it with your own
 key. Hand the output APK to your players; they install it like any APK.
 
-    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk \
+    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit2.apk \
         --server https://your-name.trycloudflare.com \
         --photon-app-id 11111111-2222-3333-4444-555555555555 \
         --photon-voice-app-id 66666666-7777-8888-9999-000000000000

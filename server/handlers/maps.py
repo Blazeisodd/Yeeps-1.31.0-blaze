@@ -4,19 +4,17 @@ Stores map data with version history.
 """
 
 import os
-import time as _time
 
 from datetime import datetime, timezone
 
 from services.db import maps, rooms
 
-# Official rooms that must NOT be editable in-game (raid protection). Admins can
-# still change them from the web editor — that's a separate code path. Override
+# Official rooms that must NOT be editable in-game (raid protection). The host
+# changes them with tools/import_map.py (a separate code path). Override
 # with env PROTECTED_ROOMS (comma list) and/or PROTECTED_ROOM_PREFIX.
 _PROTECTED_ROOMS = set(filter(None, (os.getenv("PROTECTED_ROOMS") or
     "official_0,official_1,official_2,tutorial").replace(" ", "").split(",")))
 _PROTECTED_PREFIX = os.getenv("PROTECTED_ROOM_PREFIX", "official_")
-_protect_notify_ts = {}
 
 
 def _is_protected_room(room_key: str) -> bool:
@@ -40,7 +38,8 @@ SHARED_SAVE_ROLE = os.getenv("SHARED_SAVE_ROLE", "blaze")
 # Official rooms (2026-10-11): people found how to flip a room to creative with
 # BNM and save it. In-game saves to an official room are refused for everyone,
 # whatever mode the room is in (the save request doesn't say which mode it's
-# in). Official maps are edited through the editor only. Read from the room
+# in). Official maps change only by import (tools/import_map.py) or while
+# UNLOCK_ALL_MODES is on. Read from the room
 # record (isOfficial), cached a minute, with the known official names as a floor.
 _OFFICIAL_PREFIX = ("official_", "bam_", "halloween_", "bonus_", "researchFacility", "tutorial", "freebuild_ch2")
 _official_cache: dict = {}
@@ -153,47 +152,12 @@ async def _can_edit_protected(account_id: str, body: dict | None = None) -> bool
     except Exception:
         pass
     try:
-        from routers.editor_router import EDITOR_ADMINS
-        if account_id in EDITOR_ADMINS:
-            return True
-    except Exception:
-        pass
-    try:
         acc = await accounts.find_one({"accountID": account_id}, {"_id": 0, "roleKeys": 1})
         if set((acc or {}).get("roleKeys") or []) & MAP_EDIT_ROLES:
             return True
     except Exception:
         pass
     return False
-
-# Per-room throttle for in-game map-edit webhook notifications (players building
-# save constantly; without this it would flood the Discord webhook).
-_last_edit_notify: dict = {}
-_EDIT_NOTIFY_THROTTLE = 120   # seconds between notifications per room
-
-
-async def _notify_map_edit(room_key: str, account_id: str, map_data: str) -> None:
-    """Fire a throttled Discord webhook when a map is edited in-game, so the
-    owner can see map activity (and catch griefing)."""
-    now = _time.time()
-    last = _last_edit_notify.get(room_key, 0)
-    if now - last < _EDIT_NOTIFY_THROTTLE:
-        return
-    _last_edit_notify[room_key] = now
-    try:
-        cnt = "saved"
-        try:
-            from services.mapsync_decoder import decode_map
-            cnt = f"{len(decode_map(map_data) or [])} blocks"
-        except Exception:
-            pass
-        from services.db import accounts
-        acc = await accounts.find_one({"accountID": account_id}, {"_id": 0, "displayName": 1})
-        who = (acc or {}).get("displayName") or account_id or "someone"
-        from routers.editor_router import _ingame_notify
-        await _ingame_notify(f"**{who}** (`{account_id}`) edited the map for **{room_key}** ({cnt} blocks) in-game")
-    except Exception as e:
-        print(f"[maps] edit-notify failed for {room_key}: {e}")
 
 # Room-property fields that g2_saveRoomMapProperties may carry. Floor/ground
 # level (floorDepth), liquid, lighting, theme, doors etc. live on G2_Rooms, not
@@ -210,7 +174,7 @@ _ROOM_PROP_FIELDS = {
 
 async def handle_save_room_map_properties(body: dict) -> dict:
     """Persist room-level properties (floor/ground level, liquid, lighting,
-    theme, doors, ...) changed in the editor. These are stored on G2_Rooms; the
+    theme, doors, ...) changed in game. These are stored on G2_Rooms; the
     client sends them via g2_saveRoomMapProperties, separate from the map blob."""
     room_key = body.get("roomKey", "")
     account_id = body.get("accountID", "")
@@ -219,13 +183,13 @@ async def handle_save_room_map_properties(body: dict) -> dict:
     if room_key.startswith("c_"):          # community worlds are read live from Yeeps, never stored here
         print(f"[cw] property save ignored (live from Yeeps): {room_key} by {account_id}")
         return {"success": 1}
-    # Raid protection: official rooms are editor-only for regular players; map
-    # makers / staff (and during testing, anyone) may edit them in-game.
+    # Raid protection: regular players can't change official rooms; map
+    # makers / staff (and anyone while UNLOCK_ALL_MODES is on) may edit them in-game.
     if _is_protected_room(room_key) and not await _can_edit_protected(account_id, body):
         print(f"[maps] BLOCKED in-game property edit to protected room {room_key} by {account_id}")
         return {"success": 1}
     if await _is_official_room(room_key):
-        print(f"[maps] BLOCKED in-game save to official room {room_key} by {account_id} (editor only)")
+        print(f"[maps] BLOCKED in-game save to official room {room_key} by {account_id}")
         return {"success": 1}
     if not await _may_save_shared(account_id, room_key, body):
         return {"success": 1}
@@ -265,26 +229,16 @@ async def handle_save_room_map(body: dict) -> dict:
         print(f"[cw] map save ignored (live from Yeeps): {room_key} by {account_id}")
         return {"success": 1}
 
-    # Raid protection: official rooms are editor-only for regular players (ack so
-    # the client doesn't error, but don't persist; a rate-limited alert fires).
+    # Raid protection: regular players can't change official rooms (ack so the
+    # client doesn't error, but don't persist).
     # Map makers (developer_mapMaker) / staff — and anyone during testing — may
     # edit them in-game and fall through to the normal save below.
     if _is_protected_room(room_key) and not await _can_edit_protected(account_id, body):
         print(f"[maps] BLOCKED in-game save to protected room {room_key} by {account_id}")
-        try:
-            now = _time.time()
-            if now - _protect_notify_ts.get(room_key, 0) > 600:
-                _protect_notify_ts[room_key] = now
-                from routers.editor_router import _discord_notify
-                await _discord_notify(
-                    f"🛡️ Blocked an in-game edit to protected room **{room_key}** "
-                    f"(by `{account_id}`). Official maps are editor-only.")
-        except Exception as e:
-            print(f"[maps] protected-room notify failed: {e}")
         return {"success": 1}
 
     if await _is_official_room(room_key):
-        print(f"[maps] BLOCKED in-game save to official room {room_key} by {account_id} (editor only)")
+        print(f"[maps] BLOCKED in-game save to official room {room_key} by {account_id}")
         return {"success": 1}
     if not await _may_save_shared(account_id, room_key, body):
         return {"success": 1}
@@ -294,8 +248,8 @@ async def handle_save_room_map(body: dict) -> dict:
 
     # Anti-wipe guard: refuse a save that shrinks a substantial map by >85% in
     # one go (an accidental autosave from a client that loaded a stale/empty map
-    # kept nuking restored official rooms). Real full clears go through the
-    # editor's Reset button. saveData size is a cheap proxy for block count.
+    # kept nuking restored official rooms). saveData size is a cheap proxy for
+    # block count.
     try:
         new_len = len(map_data or "")
         existing = await maps.find_one({"mapKey": map_key}, {"_id": 0, "saveData": 1})
@@ -424,7 +378,6 @@ async def handle_save_room_map(body: dict) -> dict:
     # kept in-place at roomKey$current above.)
 
     print(f"[maps] Saved map for {room_key} by {account_id} (version: {map_data_version})")
-    await _notify_map_edit(room_key, account_id, map_data)
     return {"success": 1}
 
 

@@ -19,31 +19,6 @@ from services.kick import DEFAULT_KICK_REASON
 
 LOGIN_LOG_FILE = Path("logs/login_traffic.log")
 
-# Keep references to fire-and-forget alert tasks so they aren't GC'd mid-flight.
-_bg_tasks: set = set()
-
-
-async def _alert_new_ip(account_id: str, name, oculus, new_ip: str, prior_ips: list) -> None:
-    """Post an ADMIN-webhook alert when an account logs in from an IP we've never
-    seen for it. ALERT ONLY — no auto-ban (a changed IP is usually a legit player
-    on a new network, and IP bans hit everyone sharing that IP). The admin can
-    ban the IP from the editor if it's actually account theft."""
-    try:
-        import re as _re
-        import httpx
-        from config import ADMIN_DISCORD_WEBHOOK, labeled
-        who = _re.sub(r"<[^>]+>", "", str(name or "")).strip() or str(oculus or account_id)
-        who = _re.sub(r"([*_`~|\\])", r"\\\1", who)  # neutralize Discord markdown
-        seen = ", ".join(f"`{p}`" for p in dict.fromkeys(prior_ips) if p) or "(none)"
-        msg = (f"New IP for **{who}** (`{account_id}`): `{new_ip}`\n"
-               f"not in recent IPs: {seen}\n"
-               f"Review — if this isn't them, ban the IP from the editor. "
-               f"(A changed IP is usually just a new network; this is only a heads-up.)")
-        async with httpx.AsyncClient(timeout=10) as c:
-            await c.post(ADMIN_DISCORD_WEBHOOK, json={"content": labeled(msg)[:1900]})
-    except Exception as _e:
-        print(f"[login] new-IP alert failed for {account_id}: {_e}")
-
 # Every cosmetic item key found in the client's string table (hats, masks,
 # heads, and toy/tool skins). Granted to every account so everything is
 # owned -- this is a private server, so there's no catalog endpoint to pull
@@ -2200,7 +2175,7 @@ DEFAULT_ACCOUNT = {
 # headset), so we match on the oculusID / displayName instead: any name that
 # normalizes (lowercase, non-alphanumerics stripped) to one of these is forced
 # into the adminBlocked state below -> served permabanned + isolated, so the
-# client refuses to join any room. Add new raider names here.
+# client refuses to join any room. Add names here.
 BANNED_NAME_KEYS: set = set()
 
 # The current, telemetry-free player build (single source of truth in config).
@@ -2344,12 +2319,6 @@ async def handle_login(body: dict) -> dict:
                 "banCategory": "blocked", "banExpireTimestamp": ""}})
             print(f"[device] {account_id} logged in from a BANNED headset -> account banned too "
                   f"ip={body.get('_clientIP', '')}")
-            try:
-                from routers.editor_router import _discord_notify
-                await _discord_notify(f"A banned headset logged into **{account.get('displayName') or account_id}** "
-                                      f"(`{account_id}`) - that account is now banned too.")
-            except Exception:
-                pass
     except Exception as _e:
         print(f"[device] banned-headset check failed for {account_id}: {_e}")
     if _refuse_banned_dk:
@@ -2439,7 +2408,6 @@ async def handle_login(body: dict) -> dict:
     # second try from the same IP would count as "a network this account plays
     # from" and could claim the account.
     if _ip and _ip != "?" and _device_ok:
-        _prior_ips = list(account.get("recentIPs") or [])
         try:
             await accounts.update_one(
                 {"accountID": account_id},
@@ -2447,19 +2415,6 @@ async def handle_login(body: dict) -> dict:
                  "$push": {"recentIPs": {"$each": [_ip], "$slice": -5}}})
         except Exception as _e:
             print(f"[login] IP stamp failed for {account_id}: {_e}")
-        # ALERT (not ban) when this account logs in from an IP we've never seen
-        # for it. Skip first-ever login (no prior history). Pushing _ip above
-        # means we only alert once per new IP (it's "known" on the next join).
-        if _prior_ips and _ip not in _prior_ips:
-            try:
-                import asyncio
-                _t = asyncio.create_task(_alert_new_ip(
-                    account_id, account.get("displayName"), account.get("oculusID"),
-                    _ip, _prior_ips))
-                _bg_tasks.add(_t)
-                _t.add_done_callback(_bg_tasks.discard)
-            except Exception as _e:
-                print(f"[login] new-IP alert schedule failed for {account_id}: {_e}")
 
     # Build response from the full account payload to match legacy behavior.
     # Older clients often tolerate/expect additional fields beyond

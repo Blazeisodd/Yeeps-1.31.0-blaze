@@ -4,10 +4,6 @@
   "data": "bundle_commando"
  },
  {
-  "key": "announcements",
-  "value": []
- },
- {
   "key": "bamState",
   "data": 0
  },
@@ -1541,10 +1537,6 @@
    "zippers",
    "1x5x2_stuffedTextBlaze"
   ]
- },
- {
-  "key": "friends_everyone",
-  "value": false
  },
  {
   "key": "default_account_override",

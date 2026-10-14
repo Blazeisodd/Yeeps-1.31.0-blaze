@@ -1,9 +1,6 @@
 #!/usr/bin/env python3
 """Bake your own music into one of the game's record disks, permanently, in the APK.
 
-(Easier, no APK rebuild: the editor's Disks tab swaps a record's music for
-everyone from the server. Use this tool only to ship the music inside the APK.)
-
 Works on a folder holding the game's data.unity3d and sharedassets1.resource
 (get them with tools/data/extract_data.py). The audio is converted to mono
 16-bit PCM (FSB5) and appended to sharedassets1.resource, and the record's

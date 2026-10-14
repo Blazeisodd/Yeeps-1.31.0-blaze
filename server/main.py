@@ -19,7 +19,6 @@ from fastapi.responses import Response, JSONResponse
 
 from routers.lambda_router import router as lambda_router
 from routers.dynamo_router import router as dynamo_router
-from routers.editor_router import router as editor_router
 from seed.load_world import load_world
 from services.replay_log import lookup_replay
 from services.db import accounts, globals_col
@@ -30,16 +29,15 @@ app = FastAPI(title="Yeeps v1 Private Server")
 # Stop the MongoDB from being flooded by a public client spamming logins/saves:
 # a per-IP request rate limit plus a request-body size cap. In-memory state
 # (fine for a single Render instance); generous enough for normal play and the
-# burst of calls at room-load. The editor + Discord endpoints are exempt.
+# burst of calls at room-load.
 import time as _time
 from services.build_gate import outdated_message
 _RL: dict = {}                          # ip -> [window_start, count]
 _RL_MAX = 600                           # max requests per window per IP
 _RL_WINDOW = 60                         # window seconds
 _MAX_BODY = 12 * 1024 * 1024            # 12 MB max request body
-_MAX_VIDEO_BODY = 100 * 1024 * 1024     # editor video uploads (Cloudflare's own cap is 100 MB)
 
-# Hardcoded IP bans (bans made from the editor live in services/ip_bans.py).
+# Hardcoded IP bans (other IP bans live in services/ip_bans.py).
 BLOCKED_IPS: set = set()
 
 
@@ -69,17 +67,14 @@ async def abuse_guard(request: Request, call_next):
     # 1) reject oversized bodies outright
     try:
         cl = request.headers.get("content-length")
-        lim = _MAX_BODY
-        if request.method == "POST" and (request.scope.get("path") or "").startswith("/editor/api/video"):
-            lim = _MAX_VIDEO_BODY       # editor-only (login checked before the body is read)
-        if cl and int(cl) > lim:
+        if cl and int(cl) > _MAX_BODY:
             return JSONResponse({"message": "Payload too large"}, status_code=413)
     except Exception:
         pass
-    # 2) per-IP rate limit on game traffic (skip admin editor + discord bot)
+    # 2) per-IP rate limit on game traffic
     try:
         path = request.scope.get("path", "") or ""
-        if "/editor" not in path and "/discord" not in path:
+        if True:
             ip = request.client.host if request.client else "?"
             now = _time.time()
             w = _RL.get(ip)
@@ -178,7 +173,7 @@ class _QuietPolls(logging.Filter):
 
 
 logging.getLogger("uvicorn.access").addFilter(_QuietPolls())
-_TRAFFIC_SKIP = ("/editor", "/client/", "/download", "/discord")
+_TRAFFIC_SKIP = ("/download",)
 
 
 async def log_http_traffic(request: Request, call_next):
@@ -237,7 +232,7 @@ async def startup_event():
         print("[seed] Skipped (SEED_WORLD=0)")
     print("=" * 60)
     print("  Yeeps 1.31.0-blaze self-host server is READY")
-    print(f"  Game API + editor: {_cfg.PUBLIC_BASE_URL}   (editor: /editor)")
+    print(f"  Listening on port {_cfg.SERVER_PORT}")
     print("=" * 60)
 
 
@@ -245,38 +240,6 @@ async def startup_event():
 
 # Lambda routes (specific path pattern)
 app.include_router(lambda_router)
-
-# Player data editor UI — must be registered before the catch-all
-app.include_router(editor_router, prefix="/editor")
-
-
-# Public feed the 1.31 APK polls: announcements + remote disk audio
-from routers.client_router import router as client_router
-app.include_router(client_router)
-
-
-# ─── Debug: dump recent redirected traffic ──────────────────────────
-@app.get("/debug/traffic")
-async def debug_traffic(request: Request, n: int = 60, q: str = ""):
-    """Return the last N request/response blocks from http_traffic.log.
-    Optional substring filter q (case-insensitive) keeps only blocks that
-    mention it (e.g. q=G2_Rooms or q=Master)."""
-    # Was public and read the whole (multi-GB) file: editor login required now,
-    # and only the last 4 MB is read.
-    from routers.editor_router import _authed_name
-    if not _TRAFFIC_LOG or not _authed_name(request):
-        return JSONResponse(content={"detail": "Not Found"}, status_code=404)
-    try:
-        with HTTP_LOG_FILE.open("rb") as f:
-            f.seek(0, 2); f.seek(max(0, f.tell() - 4 * 1024 * 1024))
-            text = f.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        return JSONResponse(content={"error": str(e), "blocks": []})
-    blocks = [b for b in text.split("=" * 80) if b.strip()]
-    if q:
-        ql = q.lower()
-        blocks = [b for b in blocks if ql in b.lower()]
-    return JSONResponse(content={"count": len(blocks), "blocks": blocks[-n:]})
 
 
 # ─── Catch-all route ─────────────────────────────────────────────────
@@ -305,35 +268,6 @@ async def _log_photon_auth(account_id: str, allowed: bool, request, extra: dict 
                               "query": q, **(extra or {})})
     except Exception as _e:
         print(f"[photon] auth log failed: {_e}")
-
-
-async def _bot_photon_auth(q, request):
-    """Photon custom auth for the owner's local bot (yeeps-bot). Wrong/disabled
-    key -> the same covert deny a modified client gets."""
-    import hmac as _hm
-    from config import BOT_KEY, COVERT_DENY_MESSAGE
-    if not BOT_KEY or not _hm.compare_digest(str(q.get("botKey")), BOT_KEY):
-        print("[photon] bot auth DENIED (bad key)")
-        return JSONResponse(content={"ResultCode": 2, "Message": COVERT_DENY_MESSAGE})
-    try:
-        n = min(max(int(q.get("botId") or 1), 1), 9)
-    except ValueError:
-        n = 1
-    aid = f"o_99000000000000{n:02d}"
-    name = re.sub(r"[^A-Za-z0-9_ .-]", "", str(q.get("botName") or "BlazeBot"))[:24] or "BlazeBot"
-    if not await accounts.find_one({"accountID": aid}, {"_id": 1}):
-        from handlers.login import DEFAULT_ACCOUNT, _server_time
-        acc = dict(DEFAULT_ACCOUNT)
-        ov = await globals_col.find_one({"key": "default_account_override"}, {"_id": 0, "value": 1})
-        if ov and isinstance(ov.get("value"), dict):
-            acc.update(ov["value"])
-        acc.update({"accountID": aid, "displayName": name, "isBot": 1, "firstLogin": _server_time()})
-        await accounts.insert_one(acc)
-        print(f"[photon] created bot account {aid} ({name})")
-    elif q.get("botName"):
-        await accounts.update_one({"accountID": aid}, {"$set": {"displayName": name}})
-    await _log_photon_auth(aid, True, request, {"via": "bot"})
-    return JSONResponse(content={"ResultCode": 1, "UserId": f"{aid}$VR${name}"})
 
 
 async def _photon_auth_denied(account_id: str, request) -> str | None:
@@ -489,8 +423,6 @@ async def catch_all(request: Request, path: str = ""):
     # ── 1. Photon Auth: GET / with query string ──
     if method == "GET" and path == "" and str(request.query_params):
         q = request.query_params
-        if q.get("botKey") is not None:
-            return await _bot_photon_auth(q, request)
         account_id = q.get("UserId") or q.get("userId") or q.get("accountID") or "o_0"
         # The client's integrity/attestation heartbeat arrives here too, carrying
         # summaryHash — a per-BUILD signature (the current build's libBNMExplorer.so

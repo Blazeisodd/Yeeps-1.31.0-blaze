@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Check a running server end to end, the way a 1.31.0-blaze headset talks to it.
 
-    python tools/smoke_test.py http://127.0.0.1:8000 --editor-password YOURPASS
+    python tools/smoke_test.py http://127.0.0.1:8000
 
 Logs in a throwaway test account (o_1000000000000001, "KitTester"), reads its
 account, the news board, the world map, Starter House and its (empty) map, checks that
-community worlds are refused, that a Photon join would be allowed, the client
-feed, and the editor sign-in. Every line says PASS or FAIL. The test account
-stays in the database; delete it in the editor's Players tab if you like.
+community worlds are refused, and that a Photon join would be allowed.
+Every line says PASS or FAIL. The test account stays in the database (accounts
+collection); delete it there if you like.
 """
 import argparse
 import hashlib
@@ -19,12 +19,11 @@ import urllib.request
 
 ap = argparse.ArgumentParser()
 ap.add_argument("base", nargs="?", default="http://127.0.0.1:8000", help="server address")
-ap.add_argument("--editor-password", default="", help="EDITOR_PASSWORD from server/.env (skips editor checks if empty)")
 a = ap.parse_args()
 BASE = a.base.rstrip("/")
 DK = hashlib.sha256(b"smoke-test-headset").hexdigest()
 ACC = "o_1000000000000001"
-PFX = f"/xxxxxxxxxxxxxxxxxx/k/{DK}/c/kit1.0000000000000000.0000000000000000"
+PFX = f"/xxxxxxxxxxxxxxxxxx/k/{DK}/c/kit2.0000000000000000.0000000000000000"
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 failed = []
 
@@ -85,7 +84,7 @@ s, j = dyn("GetItem", {"TableName": "G2_Accounts", "Key": {"accountID": {"S": AC
 check("account read", j.get("Item", {}).get("displayName", {}).get("S") == "KitTester")
 
 s, j = dyn("GetItem", {"TableName": "G2_Globals", "Key": {"key": {"S": "announcementData"}}})
-check("news board", "Welcome to Blaze's Yeeps Apk!" in json.dumps(j), "(edit it in the editor's News tab)")
+check("news board", "Welcome to Blaze's Yeeps Apk!" in json.dumps(j))
 
 s, j = dyn("GetItem", {"TableName": "G2_RoomMap", "Key": {"versionKey": {"S": "mobs1"}},
                        "ProjectionExpression": "data"})
@@ -108,19 +107,6 @@ check("community worlds refused", d.get("canEnter") == 0, str(d)[:100])
 
 s, raw = req(f"/?accountID={ACC}&platform=VR&gameSessionID=1&nonce=1&clientVersion=1.31.0-blaze&dk={DK}")
 check("Photon join allowed", js(raw).get("ResultCode") == 1, raw[:120])
-
-s, raw = req("/client/feed.txt")
-check("client feed", s == 200, f"status {s}")
-
-if a.editor_password:
-    s, raw = req("/editor/login", {"name": "smoke-test", "password": a.editor_password})
-    check("editor sign-in", s == 200 and js(raw).get("ok") is True, raw[:100])
-    s, raw = req("/editor/api/me")
-    check("editor access", s == 200 and js(raw).get("tier") == "owner", raw[:120])
-    s, raw = req("/editor/api/players?limit=5&q=KitTester")
-    check("editor player search", s == 200 and ACC in raw)
-else:
-    print("skip  editor checks (pass --editor-password)")
 
 print("\nALL PASS" if not failed else f"\n{len(failed)} FAILED: {', '.join(failed)}")
 sys.exit(1 if failed else 0)

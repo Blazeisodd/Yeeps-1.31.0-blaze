@@ -13,7 +13,8 @@ a headset plugged in to install the APK). The README's example requests ("set up
 server and make my APK", "help me make my Photon apps", "let players on other networks
 join my server", "put my song on a record", "add a picture block", "I want maps") map to
 the tasks below. Finish setup by running `tools/smoke_test.py` and telling them their
-editor address and password.
+server address. There's no admin website: when they want players, bans or roles
+changed, you change the database for them (see "Changing players, bans and roles").
 
 ## What this is
 
@@ -26,12 +27,14 @@ Three parts:
 
 | Folder | What | Language |
 |---|---|---|
-| `server/` | The game backend + web editor (`/editor`) | Python (FastAPI, Motor/MongoDB) |
+| `server/` | The game backend (no admin website) | Python (FastAPI, Motor/MongoDB) |
 | `client/native/` | The mod library injected into the game (`libBNMExplorer.so`) | C++ (BNM + Dobby, Android NDK) |
-| `tools/` | `configure_apk.py` (make a host's APK), `smoke_test.py` (check a server), `data/` (custom blocks and music) | Python |
+| `tools/` | `configure_apk.py` (make a host's APK), `smoke_test.py` (check a server), `import_map.py` (put a map in a room), `data/` (custom blocks and music) | Python |
 
 The APK itself is not in git (~340 MB): it's the GitHub release asset
-`Yeeps-1.31.0-blaze-kit1.apk`, a template with no server or Photon app set.
+`Yeeps-1.31.0-blaze-kit2.apk`, a template with no server or Photon app set. (kit1 also
+had a web editor, server announcements/disks/screens/video and gameplay tweaks; kit2
+took all of that out: the game and the BNM mod menu only.)
 
 **What's in the APK:** the ORIGINAL Yeeps 1.31.0 game data plus exactly one added
 block, the BLAZE block (`1x5x2_stuffedTextBlaze`, a cotton "BLAZE" word, role-locked to
@@ -50,12 +53,12 @@ user wants maps (official maps, a real Yeeps room, "put a map in Starter House",
    with the player's own Meta username + 4-digit mobile code, through the author's relay
    (`/rooms`, `/map`). Don't rebuild that tool here; use it as-is.
 2. The relay's `/map` reply is `{ok, roomKey, dimensions, blocks:[{name,x,y,z,fwd,up,color,owner,...}]}`.
-   That exact JSON (or just the blocks array) imports into one of the host's rooms with the
-   editor's **Maps > Import a map into a room** box (API: `POST /editor/api/map/import`
-   {roomKey, map}, `routers/editor_router.py`; stored in `imported_maps`, served by
-   `dynamo_ops._map_doc`).
-   Import keeps only block keys listed in the `valid_mapobject_keys` global, so 2.x-only
-   blocks from live Yeeps are dropped instead of breaking the room.
+   Save that exact JSON (or just the blocks array) to a file and import it:
+   `python tools/import_map.py --room <roomKey> map.json` (`--dry-run` only reports).
+   It keeps only block keys listed in the `valid_mapobject_keys` global (2.x-only blocks
+   from live Yeeps would break the room) and coordinates inside 0..255, stores the map in
+   `imported_maps`, and bumps the room's `lastEditedSessionID` (an int) so the game asks
+   for a session with no in-game save and gets the import (`dynamo_ops._map_doc`).
 3. Or build in game: `UNLOCK_ALL_MODES=1` in `server/.env` (restart) lets anyone switch
    rooms to creative and save official rooms; turn it off afterwards.
 
@@ -64,14 +67,14 @@ user wants maps (official maps, a real Yeeps room, "put a map in Starter House",
 **Set up a host's server**
 1. `start.bat` (Windows) or `./start.sh` creates `server/.venv`, installs
    `server/requirements.txt`, creates `server/.env` from `.env.example` (random
-   `EDITOR_PASSWORD` + `EDITOR_SECRET`), and runs uvicorn on `0.0.0.0:$PORT`.
-2. Set `MONGO_URI` (local `mongodb://127.0.0.1:27017` or an Atlas string) and
-   `PUBLIC_BASE_URL` (the address headsets use) in `server/.env`, restart.
-3. `python tools/smoke_test.py <server> --editor-password <pw>` must end `ALL PASS`.
+   `DEVICE_KEY_PEPPER`), and runs uvicorn on `0.0.0.0:$PORT`.
+2. Set `MONGO_URI` (local `mongodb://127.0.0.1:27017` or an Atlas string) in
+   `server/.env`, restart.
+3. `python tools/smoke_test.py <server>` must end `ALL PASS`.
 
 **Make a host's APK**
 
-    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk --server <url> \
+    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit2.apk --server <url> \
         --photon-app-id <PUN id> --photon-voice-app-id <Voice id> [--photon-region us]
 
 Needs Java (`keytool`) and Android build-tools (`zipalign`, `apksigner`) on PATH or
@@ -101,9 +104,9 @@ its password is in the `.pass` file next to it). Both are gitignored: never comm
 
 All game-data edits work on two files copied out of the APK, then put back:
 
-    python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit1.apk data     # data/data.unity3d + data/sharedassets1.resource
+    python tools/data/extract_data.py Yeeps-1.31.0-blaze-kit2.apk data     # data/data.unity3d + data/sharedassets1.resource
     ... edit with the tools below ...
-    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit1.apk ... --data data
+    python tools/configure_apk.py --apk Yeeps-1.31.0-blaze-kit2.apk ... --data data
 
 - **Picture block** (`tools/data/add_picture_block.py`): a 1x1x1 cotton cube with a
   picture on every face, listed next to the 1x1 Pillow. `--key 1x1_stuffed<Name>`
@@ -114,20 +117,16 @@ All game-data edits work on two files copied out of the APK, then put back:
   `blazepic/mat_<key lowercase>` in the ResourceManager, and appends a pattern entry.
   The mod keeps material slot 1 on `blazepic/mat_<key>` for any block key
   (`PicturePathFor` in native-lib.cpp): the game repaints every slot with the palette
-  color otherwise. Players must own the key: add it to `ownedPatterns` (editor, Default
-  player data and/or each player) and to the `valid_mapobject_keys` global if maps that
-  use it get imported. Run it once per block; it refuses an existing key.
+  color otherwise. Players must own the key: add it to `ownedPatterns` (the
+  `default_account_override` global for new players, and each existing account) and to
+  the `valid_mapobject_keys` global if maps that use it get imported. Run it once per
+  block; it refuses an existing key.
 - **Music in the APK** (`tools/data/bake_disk.py`): `--list` prints record AudioClips
   and label textures; `--clip <AudioClip> --audio <file> [--art <recordArtTexture_x>
   --label <image>]` converts the audio (ffmpeg via imageio-ffmpeg) to mono PCM16 FSB5,
   appends it to `sharedassets1.resource` and repoints the AudioClip.
-- **Music without a new APK** (simpler, usually what the user wants): the editor's
-  **Disks** tab. The page converts any audio to mono 22 kHz 16-bit WAV in the browser
-  (OGG is sent as is: the mod only decodes OGG and PCM WAV) and posts it raw to
-  `POST /editor/api/disks/<record_key>?ext=wav|ogg` (12 MB request limit; stored in the
-  `disk_audio` collection, `services/remote.py`). The server lists it in
-  `/client/feed.txt` (`D<TAB>clip<TAB>ext<TAB>url`) and the mod downloads it at launch and
-  swaps that record's AudioClip when it plays. `DELETE /editor/api/disks/<clip>` removes it.
+  Music only goes in through the APK (kit2 has no server-side disks): players need the
+  new APK.
 - **Other kinds of blocks** (new shapes, wiring, etc.) need real Unity asset work:
   use `add_picture_block.py` as the template (it shows the MapObject raw layout:
   GO pptr, enabled, script pptr, name, size 3i, ..., sounds, ints) and test on a headset.
@@ -151,10 +150,6 @@ The game thinks it talks to AWS. The mod (`InstallBackendRedirect`) rewrites eve
   Mongo collections (`services/db.py` maps tables to collections).
 - **Photon custom auth** (only if the host configures it in the Photon dashboard):
   `GET /?accountID=...&dk=<headset key>` -> `main._photon_auth_denied`.
-- **Mod polling**: `GET /client/feed.txt` (announcements, disk audio, picture screens)
-  and `GET /client/video.txt` -> `routers/client_router.py`.
-- **Editor**: `/editor` (page `server/static/editor_ui.html`, API `routers/editor_router.py`).
-  Sign-in = any name + `EDITOR_PASSWORD`. Everyone signed in is the host (full access).
 
 The world map the client asks for (its `roomMapVersion`, e.g. `mobs1`) is answered
 with the `beta4` room map (`dynamo_ops._get_fallback_doc`).
@@ -166,7 +161,7 @@ extracts `lib*.so` next to the mod library, so it's readable without the asset A
 then an optional override `/sdcard/Android/data/com.TrassGames.Yeeps/files/blaze-config.txt`.
 Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discord`.
 
-- `server` -> backend base (`KitServer()`), feed and video URLs.
+- `server` -> backend base (`KitServer()`).
 - Photon ids: `hook_LBC_Connect` writes them into the AppSettings every Photon
   connection (PUN and Voice) passes to `LoadBalancingClient.ConnectUsingSettings`;
   `hook_PN_GetSettings` also replaces `PhotonServerSettings.AppSettings`
@@ -184,17 +179,22 @@ Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discor
 GameAnalytics blocked; version label "1.31.0-blaze"; headset key (`ComputeDeviceKey`,
 sent as `/k/<key>/` and `dk=` on Photon auth); account-validate bypass; Meta
 entitlement/user-proof forced (`OvrHookPollThread`, required because the APK is
-re-signed: don't remove it); remote client (announcements, disk audio, screens, video);
-item dispenser accepts all items; BLAZE role blocks; first room tutorial -> Starter
-House; news-board buttons (Discord, and "Leave a review" opens the on-headset mod menu
-at `http://localhost:8080`, the BNM Explorer).
+re-signed: don't remove it; it also turns Meta's failing friends call into an empty
+list); `InstallTickAndPictures` (the main-thread tick for `KitPhotonTick`, and picture
+blocks' material); BLAZE role blocks; news-board buttons (Discord, and "Leave a review"
+opens the on-headset mod menu at `http://localhost:8080`, the BNM Explorer). That's all:
+the owner wants only the game and BNM, so don't add features the host didn't ask for.
+
+**The author's credits stay as they are**: the news board text (`announcementData` in
+`seed/world/globals.json`), the version label "1.31.0-blaze", the Discord button link
+and the BLAZE block (the only block added to the game data).
 
 ## Data
 
 MongoDB database `DB_NAME` (default `Yeeps131`). Main collections: `accounts`,
 `rooms`, `room_maps`, `maps` (`<roomKey>$current` = a room's map), `globals`,
-`bundles`, `player_statuses`, plus logs (`editor_logins`, `client_error_*`, `debug_logs`,
-`map_history` for reverts).
+`bundles`, `player_statuses`, `imported_maps`, plus `debug_logs` (the last 200 in-game
+debug reports) and `map_history`.
 
 `server/seed/world/*.json` is the 1.31 world layout: the `beta4` room map (22 nodes),
 20 room documents, globals (default player data `default_account_override` with ~1970
@@ -222,11 +222,29 @@ overwrites. To reset a room's settings: delete its `rooms` document and restart.
 - Maps are SPAM format (`U1BBTQ...`, mapDataVersion 3). `saveInternalStates` =
   `"SPAM"`, u8 3, i32 count, then per entry i32 x,y,z + a .NET string (signs etc.);
   empty = `U1BBTQMAAAAA`. Decoder/encoder: `services/mapsync_decoder.py` / `mapsync_serializer.py`.
-- Official rooms are editor-only (in-game saves are refused unless `UNLOCK_ALL_MODES=1`)
-  and a save that shrinks a big map by >85% is refused (anti-wipe), except a player
-  clearing their own private world from their own headset.
-- The editor must always get and send a room's FULL block list: a capped list once
-  deleted every block past the cap when saved (`get_map` returns all blocks now).
+- Official rooms only change by import (in-game saves are refused unless
+  `UNLOCK_ALL_MODES=1`) and a save that shrinks a big map by >85% is refused (anti-wipe),
+  except a player clearing their own private world from their own headset.
+- When you rewrite a room's map, always work on its FULL block list: a capped list once
+  deleted every block past the cap.
+
+## Changing players, bans and roles
+
+No admin website: change the MongoDB database directly (pymongo with `MONGO_URI` /
+`DB_NAME` from `server/.env`; the server picks changes up on the player's next login or
+room load). Find players in `accounts` by `displayName` (case-insensitive) or
+`accountID`.
+
+- **Block (ban) a player**: `adminBlocked: 1` (+ `blockReason`) on their account; `0`
+  lifts it. A timed ban also sets `banExpireTimestamp: "YYYY MM/DD HH:MM:SS"` (UTC): the
+  block lifts itself once that time passes.
+- **Ban an IP**: the `banned_ips` doc in `globals` (`services/ip_bans.py`).
+- **In-game moderators**: their account IDs in `MOD_STAFF` (`server/.env`, restart).
+- **BLAZE block**: the account ID in `BLAZE_HOLDERS` (`server/.env`, restart; or the
+  `blaze_holders` global `{ids: [...]}` once it exists) AND `"blaze"` in the account's
+  `roleKeys`.
+- **Give items**: add keys to `ownedPatterns` (only keys the client knows, see below).
+- **Room settings**: the `rooms` documents (numbers must stay numbers).
 
 ## Checking a headset
 
