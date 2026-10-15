@@ -2352,7 +2352,6 @@ static std::string RandomKeyFile() {
 //   photon_app_id        the host's Photon PUN (Realtime) app id
 //   photon_voice_app_id  the host's Photon Voice app id
 //   photon_region        optional fixed region (us, usw, eu, ...); blank keeps the APK's
-//   discord              link the news-board Discord button opens
 // =====================================================================
 static std::map<std::string, std::string> g_kitCfg;
 static std::string KitCfg(const char* key, const char* def = "") {
@@ -2806,7 +2805,7 @@ static void InstallTickAndPictures() {
 // call by name). Discord -> our server's invite; "Leave a review" -> the built-in
 // mod menu (BNM Explorer web UI served on the headset at :8080; the label text
 // is changed in the game data).
-static const char* kDefaultDiscord = "https://discord.gg/VhFmdAyXGk";   // Blaze's Discord
+static const char* kDiscordInvite = "https://discord.gg/VhFmdAyXGk";   // fixed watermark: not host-configurable
 static const char* kModMenuUrl = "http://localhost:8080";
 static void OpenUrl(const char* url) {
     try {
@@ -2816,7 +2815,7 @@ static void OpenUrl(const char* url) {
     } catch (...) { BNM_FileCheckpoint("Buttons: OpenURL EXCEPTION"); }
 }
 static void (*orig_OpenDiscord)(void*, void*) = nullptr;
-static void hook_OpenDiscord(void*, void*) { OpenUrl(KitCfg("discord", kDefaultDiscord).c_str()); }
+static void hook_OpenDiscord(void*, void*) { OpenUrl(kDiscordInvite); }
 static void (*orig_OpenReview)(void*, void*) = nullptr;
 static void hook_OpenReview(void*, void*) { OpenUrl(kModMenuUrl); }
 static void InstallNewsButtons() {

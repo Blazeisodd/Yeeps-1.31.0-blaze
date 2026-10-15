@@ -159,7 +159,7 @@ with the `beta4` room map (`dynamo_ops._get_fallback_doc`).
 `native-lib.cpp` (`LoadKitConfig`) reads `lib/arm64-v8a/libblazeconfig.so` (Android
 extracts `lib*.so` next to the mod library, so it's readable without the asset API),
 then an optional override `/sdcard/Android/data/com.TrassGames.Yeeps/files/blaze-config.txt`.
-Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discord`.
+Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`.
 
 - `server` -> backend base (`KitServer()`).
 - Photon ids: `hook_LBC_Connect` writes them into the AppSettings every Photon
@@ -171,7 +171,6 @@ Keys: `server`, `photon_app_id`, `photon_voice_app_id`, `photon_region`, `discor
   unset id fails to connect instead of using whoever's app the APK was built with.
   The template APK's own ids (`PhotonServerSettings`, `VoiceAppSettings` in
   `resources.assets`) are blanked to all zeros as well.
-- `discord` -> the news board's Discord button (default `https://discord.gg/VhFmdAyXGk`).
 - The APK allows plain HTTP (`res/xml/network_sec_config.xml` cleartext = true).
 
 ## Other mod features (native-lib.cpp, `OnLoaded`)
@@ -185,9 +184,12 @@ blocks' material); BLAZE role blocks; news-board buttons (Discord, and "Leave a 
 opens the on-headset mod menu at `http://localhost:8080`, the BNM Explorer). That's all:
 the owner wants only the game and BNM, so don't add features the host didn't ask for.
 
-**The author's credits stay as they are**: the news board text (`announcementData` in
-`seed/world/globals.json`), the version label "1.31.0-blaze", the Discord button link
-and the BLAZE block (the only block added to the game data).
+**The watermarks are fixed, not host-configurable.** The Discord button opens a
+hardcoded invite (`kDiscordInvite` in native-lib.cpp; there is NO `discord` kit-config
+key or `--discord` flag). The version label is the APK's versionName "1.31.0-blaze".
+The news board text is `announcementData` in `seed/world/globals.json`, and the BLAZE
+block is the only block added to the game data. Do NOT add a way to change any of
+these, and do not change them yourself.
 
 ## Data
 

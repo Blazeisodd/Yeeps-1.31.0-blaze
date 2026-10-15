@@ -182,7 +182,9 @@ photon_app_id=<PUN app id>
 photon_voice_app_id=<Voice app id>
 ```
 
-`python tools/configure_apk.py ... --settings-only` prints this file for you.
+`python tools/configure_apk.py ... --settings-only` prints this file for you. The only
+settings are the server address and your Photon apps; the version label, the news board
+and its Discord button are fixed and can't be changed here.
 
 ## Troubleshooting
 

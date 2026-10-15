@@ -54,8 +54,7 @@ def settings_text(a) -> str:
             f"server={a.server}\n"
             f"photon_app_id={a.photon_app_id}\n"
             f"photon_voice_app_id={a.photon_voice_app_id}\n"
-            f"photon_region={a.photon_region}\n"
-            f"discord={a.discord}\n")
+            f"photon_region={a.photon_region}\n")
 
 
 def ensure_key(path: str, password: str) -> None:
@@ -76,7 +75,6 @@ def main() -> None:
     ap.add_argument("--photon-app-id", required=True, help="your Photon PUN app id")
     ap.add_argument("--photon-voice-app-id", required=True, help="your Photon Voice app id")
     ap.add_argument("--photon-region", default="", help="optional fixed Photon region (us, usw, eu, ...)")
-    ap.add_argument("--discord", default="https://discord.gg/VhFmdAyXGk", help="link for the news-board Discord button")
     ap.add_argument("--out", default="", help="output APK (default: Yeeps-1.31.0-blaze-<host>.apk)")
     ap.add_argument("--keystore", default=os.path.join(KEY_DIR, "yeeps-selfhost.keystore"))
     ap.add_argument("--data", default="", help="also put back edited game data from this folder "
