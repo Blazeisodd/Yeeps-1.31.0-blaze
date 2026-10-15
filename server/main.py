@@ -31,7 +31,6 @@ app = FastAPI(title="Yeeps v1 Private Server")
 # (fine for a single Render instance); generous enough for normal play and the
 # burst of calls at room-load.
 import time as _time
-from services.build_gate import outdated_message
 _RL: dict = {}                          # ip -> [window_start, count]
 _RL_MAX = 600                           # max requests per window per IP
 _RL_WINDOW = 60                         # window seconds
@@ -230,9 +229,24 @@ async def startup_event():
         await load_world()
     else:
         print("[seed] Skipped (SEED_WORLD=0)")
+    port = _cfg.SERVER_PORT
     print("=" * 60)
     print("  Yeeps 1.31.0-blaze self-host server is READY")
-    print(f"  Listening on port {_cfg.SERVER_PORT}")
+    print(f"  Listening on port {port}. Keep this window open while people play.")
+    # Show the LAN address(es) to put in the APK's --server, so the host doesn't
+    # have to go hunting for their IP.
+    try:
+        import socket
+        ips = sorted({ai[4][0] for ai in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET)
+                      if not ai[4][0].startswith("127.")})
+        if not ips:
+            s_ = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s_.connect(("8.8.8.8", 80)); ips = [s_.getsockname()[0]]; s_.close()
+        for ip in ips:
+            print(f"  Same Wi-Fi: build the APK with  --server http://{ip}:{port}")
+    except Exception:
+        pass
+    print("  Over the internet: use a Cloudflare tunnel (see the README).")
     print("=" * 60)
 
 
@@ -272,8 +286,8 @@ async def _log_photon_auth(account_id: str, allowed: bool, request, extra: dict 
 
 async def _photon_auth_denied(account_id: str, request) -> str | None:
     """Return a deny MESSAGE if this connection must be rejected at Photon
-    custom-auth, else None. Rejects banned account / IP / name, AND outdated or
-    modified builds (e.g. a re-packed clone with a dev menu).
+    custom-auth, else None. Rejects a banned account / IP / name, a banned or
+    unbound headset, and the "game closed" switch.
 
     Enforcing the build check HERE matters: a patched client can ignore the
     client-side login isolation (GetHasPermissionToJoinRoom), but it cannot join
@@ -282,10 +296,7 @@ async def _photon_auth_denied(account_id: str, request) -> str | None:
     hardcoded "1.19.0" in every build); we deny on a POSITIVE mismatch against the
     current build's hash, and never when no hash has been seen (no false
     positives for not-yet-attested clients)."""
-    from config import (ALLOWED_ATTEST_HASHES, RETIRED_ATTEST_HASHES,
-                        REQUIRED_CLIENT_VERSION, COVERT_DENY_MESSAGE,
-                        SHADOW_BAN_IDS, SHADOW_BAN_IPS,
-                        ENFORCE_CLIENT_TOKEN, valid_client_tokens)
+    from config import COVERT_DENY_MESSAGE, SHADOW_BAN_IDS, SHADOW_BAN_IPS
     try:
         from services.ip_bans import is_banned, client_ip
         ip = client_ip(request)
@@ -347,58 +358,6 @@ async def _photon_auth_denied(account_id: str, request) -> str | None:
                         return "You are banned."
                 except Exception:
                     pass
-        # Build gate: reject outdated/modified builds at the one layer a patched
-        # client can't bypass. Denied COVERTLY — a modified client just sees a
-        # generic connection failure and can't tell its build was detected (so it
-        # can't learn to spoof the hash). Honest outdated players already get a
-        # clear "update" message on the LOGIN path, so this doesn't strand them.
-        # Use ONLY the live hash from THIS auth request (the GET join/heartbeat
-        # auth carries it). No stored-attestHash fallback: a stale stored hash
-        # from a build the account previously ran would false-positive. Deny only
-        # a hash positively present and not on the allowlist.
-        # APK build/integrity gate, from the tag this session's login recorded
-        # (services/build_gate.py). Modified native libs -> covert; old/missing
-        # build -> clear update message.
-        try:
-            from services.build_gate import enforced as _benforced
-            from services.build_gate import current_status as _cur_status
-            _bst = _cur_status(adoc or {})
-            if _benforced() and _bst == "modified":
-                print(f"[photon] build DENIED(covert, modified libs) {account_id}")
-                return COVERT_DENY_MESSAGE
-            if _benforced() and _bst == "outdated":
-                return outdated_message()
-            # "require newest build" testing toggle: deny Photon to any client
-            # not on the required build so they can't hold a CCU slot mid-test.
-            from services.build_gate import require_build as _req_build, require_blocks as _req_blocks
-            _reqb = await _req_build()
-            if _benforced() and _req_blocks(str((adoc or {}).get("clientBuildTag") or ""), _reqb):
-                return outdated_message()
-        except Exception as _e:
-            print(f"[photon] build gate error: {_e}")
-        live = str(request.query_params.get("summaryHash") or "").strip().upper()
-        from config import ENFORCE_ATTEST_HASH
-        if live and live not in ALLOWED_ATTEST_HASHES and not ENFORCE_ATTEST_HASH:
-            print(f"[photon] attest OBSERVE {account_id}: {live}")
-        elif live and live not in ALLOWED_ATTEST_HASHES:
-            if live in RETIRED_ATTEST_HASHES:
-                print(f"[photon] build DENIED(retired 1.19) {account_id}")
-                return outdated_message()
-            print(f"[photon] build DENIED(covert) {account_id}: attest {live} not allowed")
-            return COVERT_DENY_MESSAGE
-        # Rotating client token: the real build sends `ct` (a 6-digit code that
-        # changes hourly from a shared secret). While ENFORCE is off we only
-        # OBSERVE (log) so you can confirm the token-client is live for everyone
-        # before switching enforcement on; when on, a missing/stale token is a
-        # covert deny. Deliberately last, so banned/outdated get their own result.
-        tok = str(request.query_params.get("ct") or "").strip()
-        if ENFORCE_CLIENT_TOKEN:
-            if tok not in valid_client_tokens():
-                print(f"[photon] token DENIED(covert) {account_id}: ct='{tok}'")
-                return COVERT_DENY_MESSAGE
-        elif tok:
-            ok = tok in valid_client_tokens()
-            print(f"[photon] token OBSERVE {account_id}: ct='{tok}' valid={ok}")
     except Exception as e:
         print(f"[photon] auth check failed for {account_id}: {e}")
     return None

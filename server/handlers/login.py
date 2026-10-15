@@ -14,7 +14,6 @@ from pathlib import Path
 
 from services.db import accounts
 from services.property_defaults import default_for_property
-from services.build_gate import outdated_message
 from services.kick import DEFAULT_KICK_REASON
 
 LOGIN_LOG_FILE = Path("logs/login_traffic.log")
@@ -2453,59 +2452,10 @@ async def handle_login(body: dict) -> dict:
     # theory was disproven by live key capture), so the encrypted blobs do not
     # need to "match" a particular login's session IDs.
 
-    # ── Version gate: require the current "blaze" build ─────────────────
-    # The current player build reports applicationVersion/trueVersion
-    # "1.19.0-blaze" (manifest versionName). OLDER builds (which still ship
-    # player telemetry to GameAnalytics) report "1.19.0". We block anything
-    # that is not the current build so stale, telemetry-leaking clients can't
-    # play until they reinstall. Override the required string with env
-    # REQUIRED_CLIENT_VERSION if the build tag changes later.
-    # The login body usually has NO version (the game doesn't send one here). We
-    # ONLY block when the login body itself proves an outdated version — we do
-    # NOT block on the learned `lastClientVersion`, because right after a player
-    # updates, that stored value is still the OLD build and would wrongly lock
-    # them out (and they'd never get un-stuck). lastClientVersion is recorded for
-    # visibility only (see dynamo_ops). Reliable per-client blocking needs the
-    # client to send its version at login — the updated APK can be made to inject
-    # it, after which this gate becomes airtight.
-    _client_ver = str(body.get("trueVersion") or body.get("applicationVersion") or "").strip()
-    _last_ver = str(account.get("lastClientVersion") or "").strip()
-    _outdated_client = bool(_client_ver) and (_client_ver != REQUIRED_CLIENT_VERSION)
-
-    # Build identity/integrity gate (services/build_gate.py): the 1.31+ APK sends
-    # its build tag in the login path. Record it on the account (so staff can see
-    # who runs which APK, and Photon auth / refresh can enforce it this session),
-    # and block a missing/old build here with the visible "update" message.
-    # "modified" builds are NOT blocked here: Photon auth denies them covertly.
-    try:
-        from services.build_gate import classify as _bclassify, enforced as _benforced
-        _btag = str(body.get("_clientBuildTag") or "")
-        _bstatus = _bclassify(_btag)
-        # Only the account's own headset updates its recorded build: a refused
-        # login from somewhere else (2026-10-10, a script posing as the owner)
-        # used to overwrite it and mark the real player's build outdated.
-        if _device_ok:
-            await accounts.update_one({"accountID": account_id}, {"$set": {
-                "clientBuildTag": _btag, "clientBuildStatus": _bstatus,
-                "clientBuildSeenAt": datetime.now(timezone.utc).strftime("%Y %m/%d %H:%M:%S")}})
-        account["clientBuildStatus"] = _bstatus
-        if _bstatus != "ok":
-            print(f"[build] {account_id} tag='{_btag or '-'}' -> {_bstatus}")
-        if _benforced() and _bstatus == "outdated":
-            _outdated_client = True
-        # Testing toggle: "require newest build" (editor Online tab). While set,
-        # every client not on that build is outdated -> kicked + kept out, so
-        # staff can clear the server mid-test. The newest-build tester stays in.
-        from services.build_gate import require_build as _req_build, require_blocks as _req_blocks
-        _reqb = await _req_build()
-        if _benforced() and _req_blocks(_btag, _reqb):
-            _outdated_client = True
-    except Exception as _e:
-        print(f"[build] gate failed for {account_id}: {_e}")
-    if _client_ver or _last_ver:
-        print(f"[login] version {account_id}: body='{_client_ver or '-'}' "
-              f"lastSeen='{_last_ver or '-'}' (need '{REQUIRED_CLIENT_VERSION}') "
-              f"blocked={_outdated_client}")
+    # No version/build gate: a self-host server has only the one APK the host
+    # built, so there is nothing to "update" to. Every account is still served
+    # the same applicationVersion below, which is what the multiplayer map-sync
+    # check compares between players.
 
     # Force every account to the required build string so all (allowed) players
     # match for the pw / multiplayer map-sync gate, which compares the master
@@ -2560,25 +2510,6 @@ async def handle_login(body: dict) -> dict:
         data["banCategory"] = "closed"
         data["banReason"] = _closed
         data["banExpireTimestamp"] = _cls_exp.strftime("%Y %m/%d %H:%M:%S")
-        data["remainingBanHours"] = 1
-        data["hasPendingWarning"] = 0
-    elif _outdated_client:
-        # Outdated build → isolate it exactly like an admin block (client
-        # refuses to join any room), with a message telling them to update.
-        # This is NOT persisted as adminBlocked, so the moment they reinstall
-        # the current build they're back to normal with no leftover ban.
-        # Served as a short TIMED suspension (isPermabanned + a real expiry +
-        # matching remainingBanHours), NOT the no-expiry permaban screen: the
-        # player isn't banned, they just need to update. The window is
-        # re-issued on every login, so it never lapses into a playable state.
-        _upd_exp = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + 3600,
-                                          tz=timezone.utc)
-        data["isPermabanned"] = 1
-        data["isIsolated"] = 1
-        data["isMutebanned"] = 1
-        data["banCategory"] = "outdated"
-        data["banReason"] = outdated_message()
-        data["banExpireTimestamp"] = _upd_exp.strftime("%Y %m/%d %H:%M:%S")
         data["remainingBanHours"] = 1
         data["hasPendingWarning"] = 0
     elif _unlinked or _not_member:

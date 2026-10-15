@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 
 from services.db import accounts, debug_logs, globals_col
 from services.property_defaults import default_for_property
-from services.build_gate import current_status, outdated_message
 from services.kick import DEFAULT_KICK_REASON
 
 
@@ -111,12 +110,9 @@ async def handle_refresh_account_online(body: dict) -> dict:
     how a kick or ban lands MID-SESSION (1.31 does not re-login on a refresh).
 
       pendingKick  -> one-shot boot with kickReason, then cleared
-      adminBlocked -> ban (editor/staff), real remaining hours for timed bans
-      outdated     -> trueVersion != REQUIRED_CLIENT_VERSION
+      adminBlocked -> ban (staff), real remaining hours for timed bans
     Consumes any pending shouldForceRefresh.
     """
-    from config import REQUIRED_CLIENT_VERSION
-    from services.build_gate import enforced as _build_enforced
     resp = {"success": 1, "isPermabanned": 0, "banReason": "", "remainingBanHours": 0}
     account_id = body.get("accountID", "")
     if not account_id:
@@ -126,7 +122,6 @@ async def handle_refresh_account_online(body: dict) -> dict:
         {"_id": 0, "pendingKick": 1, "kickReason": 1, "adminBlocked": 1, "banReason": 1,
          "blockReason": 1, "banExpireTimestamp": 1, "shouldForceRefresh": 1,
          "clientBuildStatus": 1, "clientBuildTag": 1}) or {}
-    ver = str(body.get("trueVersion") or "").strip()
     if doc.get("pendingKick"):
         # isPermabanned=1 always reads as "permanently banned" on the client;
         # a kick is a timed boot, so send 0 + hours.
@@ -149,10 +144,6 @@ async def handle_refresh_account_online(body: dict) -> dict:
             # Permanent only when there is no expiry; timed bans show hours.
             resp.update(isPermabanned=1 if hours == 99999 else 0, remainingBanHours=hours,
                         banReason=doc.get("banReason") or doc.get("blockReason") or "You are banned.")
-    elif (ver and ver != REQUIRED_CLIENT_VERSION) or (
-            current_status(doc) == "outdated" and _build_enforced()):
-        resp.update(isPermabanned=0, remainingBanHours=1,
-                    banReason=outdated_message())
     if doc.get("shouldForceRefresh"):
         try:
             from services.dynamo_ops import _clear_force_refresh
